@@ -1,0 +1,24 @@
+# Sistema de Conferência de Manifestos - CAN
+# Requirements.txt
+
+# Interface Gráfica
+PyQt5>=5.15.9
+
+# Processamento de PDF
+pdfplumber>=0.10.3
+PyPDF2>=3.0.1
+
+# Banco de Dados (SQLite já vem com Python)
+# Mas podemos adicionar suporte opcional para PostgreSQL
+# psycopg2-binary>=2.9.9  # Descomentar se usar PostgreSQL
+
+# Manipulação de Dados
+pandas>=2.1.4
+
+# Utilitários
+python-dotenv>=1.0.0
+openpyxl>=3.1.2  # Para exportação Excel
+
+# Opcional: OCR caso PDFs sejam escaneados
+# pytesseract>=0.3.10
+# Pillow>=10.1.0
