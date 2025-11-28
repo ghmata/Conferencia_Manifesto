@@ -205,3 +205,33 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Ambiente virtual
+venv/
+.env/
+
+# Arquivos compilados
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Banco de dados SQLite
+data/*.db
+*.sqlite3
+
+# Logs
+*.log
+
+# Arquivos temporários do PyQt
+*.qmlc
+*.jsc
+
+# Config arquivos locais
+.vscode/
+.idea/
+
+# Diretórios de build (PyInstaller, cx_Freeze, etc)
+build/
+dist/
+*.spec
