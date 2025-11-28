@@ -6,18 +6,23 @@ Arquivo: src/ui/main_window.py
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QPushButton, QLabel, QTableWidget, QTableWidgetItem,
                              QHeaderView, QMessageBox, QFileDialog, QStatusBar,
-                             QAction, QToolBar, QDialog)
+                             QAction, QToolBar, QDialog, QInputDialog, QLineEdit,
+                             QSpinBox, QFormLayout)
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon, QColor, QFont
 from datetime import datetime
 import time
 
 from src.database import (listar_manifestos, obter_estatisticas_manifesto,
-                          obter_manifesto)
+                          obter_manifesto, adicionar_volume, marcar_volume_recebido,
+                          listar_volumes)
 from src.pdf_extractor import extrair_manifesto_pdf, criar_manifesto_exemplo
 from src.ui.novo_manifesto_dialog import NovoManifestoDialog
 from src.ui.conferencia_window import ConferenciaWindow
 from src.ui.detalhes_manifesto_dialog import DetalhesManifestoDialog
+
+# Senha para apagar manifestos
+SENHA_EXCLUSAO = "pitaco"
 
 
 class MainWindow(QMainWindow):
@@ -60,7 +65,7 @@ class MainWindow(QMainWindow):
         
         header_layout.addStretch()
         
-        # Botões de ação
+        # Botão Novo Manifesto
         btn_novo = QPushButton("➕ Novo Manifesto")
         btn_novo.setStyleSheet("""
             QPushButton {
@@ -79,6 +84,7 @@ class MainWindow(QMainWindow):
         btn_novo.clicked.connect(self.novo_manifesto)
         header_layout.addWidget(btn_novo)
         
+        # Botão Criar Exemplo (para testes)
         btn_exemplo = QPushButton("🧪 Criar Exemplo")
         btn_exemplo.setStyleSheet("""
             QPushButton {
@@ -100,7 +106,7 @@ class MainWindow(QMainWindow):
         
         # Tabela de manifestos
         self.tabela = QTableWidget()
-        self.tabela.setColumnCount(6)  # Reduzido para 6 colunas
+        self.tabela.setColumnCount(6)
         self.tabela.setHorizontalHeaderLabels([
             "Nº Manifesto", "Data", "Destino", 
             "Status", "Volumes", "Ações"
@@ -111,6 +117,11 @@ class MainWindow(QMainWindow):
         self.tabela.setSelectionBehavior(QTableWidget.SelectRows)
         self.tabela.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabela.setAlternatingRowColors(True)
+        
+        # IMPORTANTE: Desabilitar duplo clique acidental
+        self.tabela.setSelectionMode(QTableWidget.SingleSelection)
+        self.tabela.doubleClicked.disconnect()  # Remove ação de duplo clique padrão
+        
         self.tabela.setStyleSheet("""
             QTableWidget {
                 border: 1px solid #ddd;
@@ -128,7 +139,7 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        # IMPORTANTE: Conectar clique na linha para abrir detalhes
+        # Conectar clique na linha
         self.tabela.cellClicked.connect(self.on_linha_clicada)
         
         layout.addWidget(self.tabela)
@@ -191,19 +202,13 @@ class MainWindow(QMainWindow):
         toolbar.addAction(acao_novo)
         
     def on_linha_clicada(self, row, column):
-        """
-        NOVO: Quando clicar na linha do manifesto, abre a lista de volumes
-        """
-        # Ignorar se clicou nos botões de ação (última coluna)
+        """Quando clicar na linha do manifesto, abre a lista de volumes"""
         if column == self.tabela.columnCount() - 1:
             return
         
-        # Obter ID do manifesto da linha clicada
         item_numero = self.tabela.item(row, 0)
         if item_numero:
             numero_manifesto = item_numero.text()
-            
-            # Buscar manifesto por número para obter ID
             manifestos = listar_manifestos()
             manifesto_id = None
             for m in manifestos:
@@ -212,7 +217,6 @@ class MainWindow(QMainWindow):
                     break
             
             if manifesto_id:
-                # Abrir janela de detalhes (lista de volumes)
                 self.ver_detalhes(manifesto_id)
         
     def atualizar_tabela(self):
@@ -232,7 +236,7 @@ class MainWindow(QMainWindow):
             data = manifesto['data_manifesto'] or "N/A"
             self.tabela.setItem(i, 1, QTableWidgetItem(data))
             
-            # Destino (removido Origem)
+            # Destino
             self.tabela.setItem(i, 2, QTableWidgetItem(
                 manifesto['terminal_destino'] or "N/A"
             ))
@@ -242,7 +246,6 @@ class MainWindow(QMainWindow):
             item_status = QTableWidgetItem(self._formatar_status(status))
             item_status.setTextAlignment(Qt.AlignCenter)
             
-            # Cores baseadas no status
             if status == 'TOTALMENTE RECEBIDO':
                 item_status.setBackground(QColor(76, 175, 80, 50))
             elif status == 'PARCIALMENTE RECEBIDO':
@@ -261,30 +264,102 @@ class MainWindow(QMainWindow):
             item_volumes.setTextAlignment(Qt.AlignCenter)
             self.tabela.setItem(i, 4, item_volumes)
             
-            # Botões de ação
+            # Botões de ação (4 FUNCIONALIDADES)
             btn_widget = QWidget()
             btn_layout = QHBoxLayout(btn_widget)
             btn_layout.setContentsMargins(5, 2, 5, 2)
             btn_layout.setSpacing(5)
             
-            # Botão Conferir
+            # 1. Conferir Material
             btn_conferir = QPushButton("🔍 Conferir")
+            btn_conferir.setMinimumSize(90, 35)
             btn_conferir.setStyleSheet("""
                 QPushButton {
                     background-color: #2196F3;
                     color: white;
                     border: none;
-                    padding: 5px 10px;
+                    padding: 8px 12px;
                     border-radius: 3px;
+                    font-size: 12px;
+                    font-weight: bold;
                 }
                 QPushButton:hover {
                     background-color: #0b7dda;
                 }
             """)
+            btn_conferir.setToolTip("Conferir material do manifesto")
             btn_conferir.clicked.connect(
                 lambda checked, m_id=manifesto['id']: self.abrir_conferencia(m_id)
             )
             btn_layout.addWidget(btn_conferir)
+            
+            # 2. Inserir Volume Extra
+            btn_extra = QPushButton("➕ Extra")
+            btn_extra.setMinimumSize(80, 35)
+            btn_extra.setStyleSheet("""
+                QPushButton {
+                    background-color: #FF9800;
+                    color: white;
+                    border: none;
+                    padding: 8px 12px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #e68900;
+                }
+            """)
+            btn_extra.setToolTip("Inserir volume extra (não constava no manifesto)")
+            btn_extra.clicked.connect(
+                lambda checked, m_id=manifesto['id']: self.inserir_volume_extra(m_id)
+            )
+            btn_layout.addWidget(btn_extra)
+            
+            # 3. Receber Tudo
+            btn_tudo = QPushButton("✅ Tudo")
+            btn_tudo.setMinimumSize(70, 35)
+            btn_tudo.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    padding: 8px 12px;
+                    border-radius: 3px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+            """)
+            btn_tudo.setToolTip("Receber todos os volumes de uma vez")
+            btn_tudo.clicked.connect(
+                lambda checked, m_id=manifesto['id']: self.receber_tudo(m_id)
+            )
+            btn_layout.addWidget(btn_tudo)
+            
+            # 4. Apagar Manifesto
+            btn_apagar = QPushButton("🗑️")
+            btn_apagar.setMinimumSize(50, 35)
+            btn_apagar.setStyleSheet("""
+                QPushButton {
+                    background-color: #f44336;
+                    color: white;
+                    border: none;
+                    padding: 8px 12px;
+                    border-radius: 3px;
+                    font-size: 14px;
+                }
+                QPushButton:hover {
+                    background-color: #da190b;
+                }
+            """)
+            btn_apagar.setToolTip("Apagar manifesto (requer senha)")
+            btn_apagar.clicked.connect(
+                lambda checked, m_id=manifesto['id']: self.apagar_manifesto(m_id)
+            )
+            btn_layout.addWidget(btn_apagar)
             
             btn_layout.addStretch()
             self.tabela.setCellWidget(i, 5, btn_widget)
@@ -312,6 +387,7 @@ class MainWindow(QMainWindow):
     def criar_manifesto_exemplo(self):
         """Cria um manifesto de exemplo para demonstração"""
         from src.database import criar_manifesto, adicionar_volume
+        import time
         
         reply = QMessageBox.question(
             self,
@@ -322,11 +398,10 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.Yes:
             try:
-                # Criar manifesto
                 dados, volumes = criar_manifesto_exemplo()
+                numero_unico = f"{dados['numero_manifesto']}-EX{int(time.time() * 1000) % 100000}"
                 
-                # Adicionar timestamp ao número para evitar duplicatas
-                numero_unico = f"{dados['numero_manifesto']}-{int(time.time())}"
+                time.sleep(0.5)
                 
                 manifesto_id = criar_manifesto(
                     numero=numero_unico,
@@ -337,7 +412,9 @@ class MainWindow(QMainWindow):
                     aeronave=dados.get('aeronave')
                 )
                 
-                # Adicionar volumes
+                time.sleep(0.3)
+                
+                total_caixas = 0
                 for vol in volumes:
                     adicionar_volume(
                         manifesto_id=manifesto_id,
@@ -351,23 +428,27 @@ class MainWindow(QMainWindow):
                         tipo_material=vol.get('tipo_material'),
                         embalagem=vol.get('embalagem')
                     )
+                    total_caixas += vol['quantidade_expedida']
+                    time.sleep(0.05)
                 
-                # Pequeno delay para garantir que o banco foi atualizado
-                time.sleep(0.1)
-                
+                time.sleep(0.5)
                 self.atualizar_tabela()
+                
                 QMessageBox.information(
                     self,
                     "Sucesso",
-                    f"Manifesto de exemplo {numero_unico} criado com sucesso!\n"
-                    f"Total de volumes: {len(volumes)}"
+                    f"Manifesto de exemplo criado!\n\n"
+                    f"Número: {numero_unico}\n"
+                    f"Nºs de volume: {len(volumes)}\n"
+                    f"Total de CAIXAS: {total_caixas}"
                 )
                 
             except Exception as e:
+                import traceback
                 QMessageBox.critical(
                     self,
                     "Erro",
-                    f"Erro ao criar manifesto de exemplo:\n{str(e)}"
+                    f"Erro ao criar exemplo:\n{str(e)}\n\n{traceback.format_exc()}"
                 )
     
     def abrir_conferencia(self, manifesto_id: int):
@@ -376,11 +457,154 @@ class MainWindow(QMainWindow):
         self.conferencia_window.show()
         self.conferencia_window.conferencia_finalizada.connect(self.atualizar_tabela)
         
+    def inserir_volume_extra(self, manifesto_id: int):
+        """Insere volume extra que não constava no manifesto"""
+        dialog = VolumeExtraDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            try:
+                adicionar_volume(
+                    manifesto_id=manifesto_id,
+                    remetente=dialog.remetente,
+                    destinatario="PAMALS",
+                    numero_volume=dialog.numero_volume,
+                    quantidade_exp=dialog.quantidade,
+                    tipo_material="VOLUME EXTRA",
+                    embalagem="CAIXA"
+                )
+                
+                QMessageBox.information(
+                    self,
+                    "Sucesso",
+                    f"Volume extra {dialog.numero_volume} adicionado ao manifesto!"
+                )
+                
+                self.atualizar_tabela()
+                
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Erro",
+                    f"Erro ao adicionar volume extra:\n{str(e)}"
+                )
+    
+    def receber_tudo(self, manifesto_id: int):
+        """Recebe todos os volumes de uma vez"""
+        reply = QMessageBox.question(
+            self,
+            "Receber Tudo",
+            "Tem certeza que deseja marcar TODOS os volumes deste manifesto como recebidos?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                volumes = listar_volumes(manifesto_id)
+                
+                for volume in volumes:
+                    marcar_volume_recebido(volume['id'], volume['quantidade_expedida'], "Sistema")
+                
+                from src.database import finalizar_conferencia, registrar_log
+                
+                # Solicitar nome
+                nome, ok = QInputDialog.getText(
+                    self,
+                    "Nome do Responsável",
+                    "Digite o nome de quem está recebendo:",
+                    QLineEdit.Normal,
+                    ""
+                )
+                
+                if ok and nome.strip():
+                    finalizar_conferencia(manifesto_id)
+                    registrar_log(
+                        manifesto_id,
+                        "RECEBIMENTO TOTAL",
+                        f"Todos os volumes recebidos por: {nome.strip()}",
+                        nome.strip()
+                    )
+                
+                self.atualizar_tabela()
+                
+                QMessageBox.information(
+                    self,
+                    "Sucesso",
+                    f"Todos os {len(volumes)} volumes foram marcados como recebidos!"
+                )
+                
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Erro",
+                    f"Erro ao receber volumes:\n{str(e)}"
+                )
+    
+    def apagar_manifesto(self, manifesto_id: int):
+        """Apaga manifesto com senha"""
+        senha, ok = QInputDialog.getText(
+            self,
+            "Apagar Manifesto",
+            "Digite a senha para apagar o manifesto:",
+            QLineEdit.Password,
+            ""
+        )
+        
+        if not ok:
+            return
+        
+        if senha != SENHA_EXCLUSAO:
+            QMessageBox.critical(
+                self,
+                "Senha Incorreta",
+                "Senha incorreta! Não é possível apagar o manifesto."
+            )
+            return
+        
+        manifesto = obter_manifesto(manifesto_id)
+        
+        reply = QMessageBox.warning(
+            self,
+            "Confirmação",
+            f"Tem certeza que deseja APAGAR o manifesto {manifesto['numero_manifesto']}?\n\n"
+            f"Esta ação NÃO pode ser desfeita!",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                from src.database import get_connection
+                
+                conn = get_connection()
+                try:
+                    cursor = conn.cursor()
+                    
+                    # Apagar em cascata
+                    cursor.execute("DELETE FROM logs WHERE manifesto_id = ?", (manifesto_id,))
+                    cursor.execute("DELETE FROM caixas_individuais WHERE volume_id IN (SELECT id FROM volumes WHERE manifesto_id = ?)", (manifesto_id,))
+                    cursor.execute("DELETE FROM volumes WHERE manifesto_id = ?", (manifesto_id,))
+                    cursor.execute("DELETE FROM manifestos WHERE id = ?", (manifesto_id,))
+                    
+                finally:
+                    conn.close()
+                
+                self.atualizar_tabela()
+                
+                QMessageBox.information(
+                    self,
+                    "Sucesso",
+                    f"Manifesto {manifesto['numero_manifesto']} apagado com sucesso!"
+                )
+                
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Erro",
+                    f"Erro ao apagar manifesto:\n{str(e)}"
+                )
+        
     def ver_detalhes(self, manifesto_id: int):
-        """Abre diálogo de detalhes do manifesto (LISTA DE VOLUMES)"""
+        """Abre diálogo de detalhes do manifesto"""
         dialog = DetalhesManifestoDialog(manifesto_id, self)
         dialog.exec_()
-        # Atualizar tabela ao fechar (caso tenha havido mudanças)
         self.atualizar_tabela()
         
     def mostrar_sobre(self):
@@ -391,16 +615,100 @@ class MainWindow(QMainWindow):
             "<h2>Sistema de Conferência de Manifestos CAN</h2>"
             "<p><b>Versão:</b> 1.0.0</p>"
             "<p><b>Desenvolvido para:</b> Correio Aéreo Nacional</p>"
-            "<p>Sistema para agilizar a conferência de manifestos de carga, "
-            "permitindo registro rápido, rastreabilidade completa e "
-            "histórico de recebimentos.</p>"
+            "<p>Sistema para agilizar a conferência de manifestos de carga.</p>"
             "<p><b>Funcionalidades:</b></p>"
             "<ul>"
-            "<li>✅ Importação de manifestos em PDF</li>"
-            "<li>✅ Conferência rápida via busca inteligente</li>"
-            "<li>✅ Controle de volumes múltiplos</li>"
-            "<li>✅ Histórico completo de recebimentos</li>"
-            "<li>✅ Relatórios e estatísticas</li>"
+            "<li>✅ Conferência inteligente com confirmação</li>"
+            "<li>✅ Seleção de caixas individuais</li>"
+            "<li>✅ Inserção de volumes extras</li>"
+            "<li>✅ Recebimento total em lote</li>"
+            "<li>✅ Exclusão protegida por senha</li>"
             "</ul>"
-            "<p><b>Clique em qualquer linha para ver detalhes dos volumes!</b></p>"
+            "<p><b>Clique em qualquer linha para ver detalhes!</b></p>"
         )
+
+
+class VolumeExtraDialog(QDialog):
+    """Diálogo para inserir volume extra"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.remetente = ""
+        self.numero_volume = ""
+        self.quantidade = 1
+        self.init_ui()
+        
+    def init_ui(self):
+        """Inicializa a interface"""
+        self.setWindowTitle("Inserir Volume Extra")
+        self.setModal(True)
+        self.setMinimumWidth(400)
+        
+        layout = QVBoxLayout(self)
+        
+        # Título
+        titulo = QLabel("➕ Inserir Volume Extra (não constava no manifesto)")
+        font = QFont()
+        font.setPointSize(12)
+        font.setBold(True)
+        titulo.setFont(font)
+        layout.addWidget(titulo)
+        
+        # Formulário
+        form_layout = QFormLayout()
+        
+        self.txt_remetente = QLineEdit()
+        self.txt_remetente.setPlaceholderText("Ex: PAMASP, AFA, CABW")
+        form_layout.addRow("Remetente*:", self.txt_remetente)
+        
+        self.txt_numero = QLineEdit()
+        self.txt_numero.setPlaceholderText("Ex: 251381004311/0001")
+        form_layout.addRow("N° do Volume*:", self.txt_numero)
+        
+        self.spin_quantidade = QSpinBox()
+        self.spin_quantidade.setMinimum(1)
+        self.spin_quantidade.setMaximum(99)
+        self.spin_quantidade.setValue(1)
+        form_layout.addRow("Quantidade de caixas:", self.spin_quantidade)
+        
+        layout.addLayout(form_layout)
+        
+        # Botões
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        
+        btn_cancelar = QPushButton("Cancelar")
+        btn_cancelar.clicked.connect(self.reject)
+        btn_layout.addWidget(btn_cancelar)
+        
+        btn_salvar = QPushButton("💾 Salvar")
+        btn_salvar.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 8px 15px;
+                border: none;
+                border-radius: 5px;
+                font-weight: bold;
+            }
+        """)
+        btn_salvar.clicked.connect(self.salvar)
+        btn_layout.addWidget(btn_salvar)
+        
+        layout.addLayout(btn_layout)
+        
+    def salvar(self):
+        """Valida e salva os dados"""
+        self.remetente = self.txt_remetente.text().strip().upper()
+        self.numero_volume = self.txt_numero.text().strip()
+        self.quantidade = self.spin_quantidade.value()
+        
+        if not self.remetente or not self.numero_volume:
+            QMessageBox.warning(
+                self,
+                "Campos Obrigatórios",
+                "Preencha o remetente e o número do volume!"
+            )
+            return
+        
+        self.accept()

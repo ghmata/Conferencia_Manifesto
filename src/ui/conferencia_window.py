@@ -6,7 +6,8 @@ Arquivo: src/ui/conferencia_window.py
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QLineEdit, QPushButton, QTextEdit,
                              QGroupBox, QMessageBox, QDialog, QSpinBox,
-                             QCheckBox, QFrame)
+                             QCheckBox, QFrame, QScrollArea, QRadioButton,
+                             QButtonGroup, QInputDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QColor, QPalette
 from datetime import datetime
@@ -29,17 +30,25 @@ class ConferenciaWindow(QMainWindow):
         self.manifesto_id = manifesto_id
         self.manifesto = obter_manifesto(manifesto_id)
         self.conferencia_ativa = False
+        self.volume_encontrado = None  # Armazena volume para confirmação
         self.init_ui()
         self.carregar_manifesto()
         
     def init_ui(self):
         """Inicializa a interface"""
         self.setWindowTitle("Conferência de Manifesto")
-        self.setGeometry(150, 150, 900, 700)
+        self.setGeometry(150, 150, 1000, 750)
         
-        # Widget central
+        # ScrollArea principal
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Widget central dentro do scroll
         central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        scroll.setWidget(central_widget)
+        self.setCentralWidget(scroll)
         
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(20, 20, 20, 20)
@@ -51,7 +60,7 @@ class ConferenciaWindow(QMainWindow):
         # Área de busca
         self.criar_area_busca(layout)
         
-        # Área de resultados
+        # Área de resultados (com botão de confirmação)
         self.criar_area_resultados(layout)
         
         # Resumo
@@ -68,8 +77,7 @@ class ConferenciaWindow(QMainWindow):
         info_text = f"""
         <b>Nº Manifesto:</b> {self.manifesto['numero_manifesto']}<br>
         <b>Data:</b> {self.manifesto['data_manifesto']}<br>
-        <b>Origem:</b> {self.manifesto['terminal_origem']} → <b>Destino:</b> {self.manifesto['terminal_destino']}<br>
-        <b>Missão:</b> {self.manifesto.get('missao', 'N/A')} | <b>Aeronave:</b> {self.manifesto.get('aeronave', 'N/A')}
+        <b>Destino:</b> {self.manifesto['terminal_destino']}<br>
         """
         
         lbl_info = QLabel(info_text)
@@ -86,7 +94,7 @@ class ConferenciaWindow(QMainWindow):
         
         # Instrução
         lbl_instrucao = QLabel(
-            "Digite o <b>REMETENTE</b> e os <b>ÚLTIMOS DÍGITOS</b> do n° do volume para conferir:"
+            "Digite o <b>REMETENTE</b> e os <b>ÚLTIMOS DÍGITOS ANTES DA /</b> do n° do volume:"
         )
         group_layout.addWidget(lbl_instrucao)
         
@@ -95,7 +103,7 @@ class ConferenciaWindow(QMainWindow):
         remetente_layout.addWidget(QLabel("Remetente:"))
         
         self.txt_remetente = QLineEdit()
-        self.txt_remetente.setPlaceholderText("Ex: PAMALS, CABW")
+        self.txt_remetente.setPlaceholderText("Ex: PAMASP, CABW")
         self.txt_remetente.setMaximumWidth(200)
         self.txt_remetente.textChanged.connect(self.atualizar_instrucao_digitos)
         self.txt_remetente.returnPressed.connect(self.focar_digitos)
@@ -107,12 +115,12 @@ class ConferenciaWindow(QMainWindow):
         # Campo Últimos Dígitos
         digitos_layout = QHBoxLayout()
         
-        self.lbl_digitos = QLabel("Últimos 4 dígitos:")
+        self.lbl_digitos = QLabel("Últimos 4 dígitos (antes da /):")
         digitos_layout.addWidget(self.lbl_digitos)
         
         self.txt_digitos = QLineEdit()
-        self.txt_digitos.setPlaceholderText("Digite os últimos dígitos")
-        self.txt_digitos.setMaximumWidth(200)
+        self.txt_digitos.setPlaceholderText("Digite os últimos dígitos ANTES da /")
+        self.txt_digitos.setMaximumWidth(250)
         self.txt_digitos.returnPressed.connect(self.buscar_volume_tecla_enter)
         digitos_layout.addWidget(self.txt_digitos)
         
@@ -138,7 +146,7 @@ class ConferenciaWindow(QMainWindow):
         
         # Dica
         lbl_dica = QLabel(
-            "💡 <i>Dica: Para CABW use 7 dígitos. Para outros remetentes, 4 dígitos.</i>"
+            "💡 <i>Exemplo: 251381004311/0001 → Digite apenas '4311' (4 últimos antes da /)</i>"
         )
         lbl_dica.setStyleSheet("color: #666; font-size: 11px;")
         group_layout.addWidget(lbl_dica)
@@ -151,10 +159,15 @@ class ConferenciaWindow(QMainWindow):
         group = QGroupBox("📦 Resultado da Busca")
         group_layout = QVBoxLayout()
         
+        # Área de texto com scroll
+        scroll_resultado = QScrollArea()
+        scroll_resultado.setWidgetResizable(True)
+        scroll_resultado.setMinimumHeight(200)
+        scroll_resultado.setMaximumHeight(350)
+        
         self.txt_resultado = QTextEdit()
         self.txt_resultado.setReadOnly(True)
-        self.txt_resultado.setMinimumHeight(200)
-        self.txt_resultado.setMaximumHeight(300)
+        self.txt_resultado.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         self.txt_resultado.setStyleSheet("""
             QTextEdit {
                 border: 2px solid #ddd;
@@ -164,7 +177,29 @@ class ConferenciaWindow(QMainWindow):
                 font-size: 12px;
             }
         """)
+        
+        scroll_resultado.setWidget(self.txt_resultado)
         group_layout.addWidget(self.txt_resultado)
+        
+        # Botão de confirmação (inicialmente oculto)
+        self.btn_confirmar = QPushButton("✅ CONFIRMAR RECEBIMENTO")
+        self.btn_confirmar.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 15px;
+                border: none;
+                border-radius: 5px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.btn_confirmar.clicked.connect(self.confirmar_recebimento)
+        self.btn_confirmar.setVisible(False)
+        group_layout.addWidget(self.btn_confirmar)
         
         group.setLayout(group_layout)
         layout.addWidget(group)
@@ -246,12 +281,12 @@ class ConferenciaWindow(QMainWindow):
         """Atualiza a instrução de dígitos baseado no remetente"""
         remetente = self.txt_remetente.text().strip().upper()
         
-        if remetente == 'CABW':
-            self.lbl_digitos.setText("Últimos 7 dígitos:")
-            self.txt_digitos.setPlaceholderText("Digite os últimos 7 dígitos")
+        if 'CABW' in remetente or 'CABE' in remetente:
+            self.lbl_digitos.setText("Últimos 7 dígitos (antes da /):")
+            self.txt_digitos.setPlaceholderText("Digite os últimos 7 dígitos ANTES da /")
         else:
-            self.lbl_digitos.setText("Últimos 4 dígitos:")
-            self.txt_digitos.setPlaceholderText("Digite os últimos 4 dígitos")
+            self.lbl_digitos.setText("Últimos 4 dígitos (antes da /):")
+            self.txt_digitos.setPlaceholderText("Digite os últimos 4 dígitos ANTES da /")
             
     def focar_digitos(self):
         """Move o foco para o campo de dígitos"""
@@ -288,12 +323,18 @@ class ConferenciaWindow(QMainWindow):
         if not volumes:
             # NÃO ENCONTRADO
             self.exibir_nao_encontrado(remetente, digitos)
+            self.volume_encontrado = None
+            self.btn_confirmar.setVisible(False)
         elif len(volumes) == 1:
-            # ENCONTRADO ÚNICO
-            self.processar_volume_unico(volumes[0])
+            # ENCONTRADO ÚNICO - Mostrar e pedir confirmação
+            self.volume_encontrado = volumes[0]
+            self.exibir_volume_encontrado(volumes[0])
+            self.btn_confirmar.setVisible(True)
         else:
-            # MÚLTIPLOS VOLUMES (raro, mas possível)
+            # MÚLTIPLOS VOLUMES
             self.exibir_multiplos_volumes(volumes)
+            self.volume_encontrado = None
+            self.btn_confirmar.setVisible(False)
             
     def exibir_nao_encontrado(self, remetente: str, digitos: str):
         """Exibe mensagem de volume não encontrado"""
@@ -303,14 +344,14 @@ class ConferenciaWindow(QMainWindow):
 ╚══════════════════════════════════════════════════════════════╝
 
 Remetente informado: {remetente}
-Últimos dígitos: {digitos}
+Últimos dígitos (antes da /): {digitos}
 
 Este volume NÃO está no manifesto {self.manifesto['numero_manifesto']}.
 
 Opções:
 1. Verificar se digitou corretamente
 2. Conferir se o volume pertence a outro manifesto
-3. Registrar como volume extra (não previsto)
+3. Use o botão "Inserir Volume Extra" na tela principal
 
 """
         self.txt_resultado.setStyleSheet("""
@@ -329,130 +370,113 @@ Opções:
         self.txt_digitos.clear()
         self.txt_digitos.setFocus()
         
-    def processar_volume_unico(self, volume: dict):
-        """Processa volume único encontrado"""
-        # Verificar se tem múltiplas caixas
+    def exibir_volume_encontrado(self, volume: dict):
+        """Exibe volume encontrado e aguarda confirmação"""
         caixas = obter_caixas(volume['id'])
         
-        if volume['quantidade_expedida'] == 1:
-            # Volume simples (1 caixa)
-            self.processar_volume_simples(volume, caixas[0])
-        else:
-            # Volume com múltiplas caixas
-            self.processar_volume_multiplo(volume, caixas)
-            
-    def processar_volume_simples(self, volume: dict, caixa: dict):
-        """Processa volume com apenas 1 caixa"""
-        if caixa['status'] == 'RECEBIDA':
-            # Já foi recebida
-            resultado = f"""
+        resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║                ⚠️  VOLUME JÁ FOI RECEBIDO                    ║
+║                   ✅ VOLUME ENCONTRADO!                       ║
 ╚══════════════════════════════════════════════════════════════╝
 
 N° Volume: {volume['numero_volume']}
 Remetente: {volume['remetente']} → Destinatário: {volume['destinatario']}
 
-Quantidade: 1 de 1 caixa ✅
-Peso: {volume['peso_total']} kg | Cubagem: {volume['cubagem']} m³
-
-Status: JÁ RECEBIDA em {caixa['data_hora_recepcao'][:16]}
-Por: {caixa['usuario_conferente']}
-"""
-            self.txt_resultado.setStyleSheet("""
-                QTextEdit {
-                    border: 2px solid #ff9800;
-                    background-color: #fff3e0;
-                    border-radius: 5px;
-                    padding: 10px;
-                    font-family: 'Courier New', monospace;
-                    font-size: 12px;
-                }
-            """)
-        else:
-            # Marcar como recebida
-            marcar_caixa_recebida(volume['id'], caixa['numero_caixa'], "Usuário")
-            
-            resultado = f"""
-╔══════════════════════════════════════════════════════════════╗
-║                   ✅ VOLUME RECEBIDO COM SUCESSO              ║
-╚══════════════════════════════════════════════════════════════╝
-
-N° Volume: {volume['numero_volume']}
-Remetente: {volume['remetente']} → Destinatário: {volume['destinatario']}
-
-Quantidade: 1 de 1 caixa ✅
+Quantidade: {volume['quantidade_expedida']} caixa(s)
 Peso: {volume['peso_total']} kg | Cubagem: {volume['cubagem']} m³
 Prioridade: {volume['prioridade']}
 
-✅ RECEBIDO AGORA ({datetime.now().strftime('%H:%M:%S')})
+Status Atual:
 """
-            self.txt_resultado.setStyleSheet("""
-                QTextEdit {
-                    border: 2px solid #4CAF50;
-                    background-color: #e8f5e9;
-                    border-radius: 5px;
-                    padding: 10px;
-                    font-family: 'Courier New', monospace;
-                    font-size: 12px;
-                }
-            """)
-            
-            # Atualizar resumo
-            self.atualizar_resumo()
         
+        # Mostrar status de cada caixa
+        for caixa in caixas:
+            status_emoji = "✅" if caixa['status'] == 'RECEBIDA' else "⬜"
+            status_texto = "RECEBIDA" if caixa['status'] == 'RECEBIDA' else "NÃO RECEBIDA"
+            resultado += f"  {status_emoji} Caixa {caixa['numero_caixa']} de {volume['quantidade_expedida']}: {status_texto}\n"
+        
+        resultado += f"""
+
+{'⚠️ ATENÇÃO: Verifique se este é o volume correto!' if volume['quantidade_expedida'] == 1 else '⚠️ ATENÇÃO: Este volume tem múltiplas caixas!'}
+
+{'Clique em CONFIRMAR RECEBIMENTO para registrar.' if volume['quantidade_expedida'] == 1 else 'Clique em CONFIRMAR para escolher qual(is) caixa(s) receber.'}
+"""
+        
+        self.txt_resultado.setStyleSheet("""
+            QTextEdit {
+                border: 2px solid #FF9800;
+                background-color: #FFF3E0;
+                border-radius: 5px;
+                padding: 10px;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+            }
+        """)
         self.txt_resultado.setText(resultado)
         
-        # Limpar campos para próxima conferência
+    def confirmar_recebimento(self):
+        """Confirma o recebimento do volume encontrado"""
+        if not self.volume_encontrado:
+            return
+        
+        volume = self.volume_encontrado
+        caixas = obter_caixas(volume['id'])
+        
+        if volume['quantidade_expedida'] == 1:
+            # Volume simples - confirmar direto
+            if caixas[0]['status'] == 'RECEBIDA':
+                QMessageBox.information(
+                    self,
+                    "Já Recebido",
+                    "Esta caixa já foi recebida anteriormente!"
+                )
+            else:
+                marcar_caixa_recebida(volume['id'], 1, "Usuário")
+                self.mostrar_sucesso_recebimento(volume, 1, 1)
+                self.atualizar_resumo()
+        else:
+            # Volume múltiplo - abrir diálogo de seleção
+            dialog = VolumeMultiploDialog(volume, caixas, self)
+            if dialog.exec_() == QDialog.Accepted:
+                self.atualizar_resumo()
+                self.mostrar_sucesso_recebimento(volume, dialog.quantidade_marcada, volume['quantidade_expedida'])
+        
+        # Limpar para próxima busca
         self.txt_remetente.clear()
         self.txt_digitos.clear()
         self.txt_remetente.setFocus()
+        self.volume_encontrado = None
+        self.btn_confirmar.setVisible(False)
         
-    def processar_volume_multiplo(self, volume: dict, caixas: list):
-        """Processa volume com múltiplas caixas"""
-        # Contar recebidas e não recebidas
-        recebidas = [c for c in caixas if c['status'] == 'RECEBIDA']
-        nao_recebidas = [c for c in caixas if c['status'] == 'NÃO RECEBIDA']
-        
-        # Mostrar diálogo
-        dialog = VolumeMultiploDialog(volume, caixas, self)
-        if dialog.exec_() == QDialog.Accepted:
-            self.atualizar_resumo()
-            
-            # Mostrar resumo do que foi feito
-            resultado = f"""
+    def mostrar_sucesso_recebimento(self, volume: dict, recebidas: int, total: int):
+        """Mostra mensagem de sucesso após recebimento"""
+        resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║               ✅ VOLUME MÚLTIPLO PROCESSADO                   ║
+║               ✅ RECEBIMENTO CONFIRMADO COM SUCESSO!          ║
 ╚══════════════════════════════════════════════════════════════╝
 
 N° Volume: {volume['numero_volume']}
 Remetente: {volume['remetente']} → Destinatário: {volume['destinatario']}
 
-Total de caixas: {volume['quantidade_expedida']}
-Recebidas agora: {dialog.quantidade_marcada}
-Total recebidas: {len(recebidas) + dialog.quantidade_marcada}/{volume['quantidade_expedida']}
+Recebido agora: {recebidas} de {total} caixa(s)
+Horário: {datetime.now().strftime('%H:%M:%S')}
 
-Status: {'✅ COMPLETO' if len(recebidas) + dialog.quantidade_marcada == volume['quantidade_expedida'] else '⚠️ PARCIAL'}
+✅ Registrado no sistema!
 """
-            self.txt_resultado.setStyleSheet("""
-                QTextEdit {
-                    border: 2px solid #4CAF50;
-                    background-color: #e8f5e9;
-                    border-radius: 5px;
-                    padding: 10px;
-                    font-family: 'Courier New', monospace;
-                    font-size: 12px;
-                }
-            """)
-            self.txt_resultado.setText(resultado)
-        
-        # Limpar campos
-        self.txt_remetente.clear()
-        self.txt_digitos.clear()
-        self.txt_remetente.setFocus()
+        self.txt_resultado.setStyleSheet("""
+            QTextEdit {
+                border: 2px solid #4CAF50;
+                background-color: #e8f5e9;
+                border-radius: 5px;
+                padding: 10px;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+            }
+        """)
+        self.txt_resultado.setText(resultado)
         
     def exibir_multiplos_volumes(self, volumes: list):
-        """Exibe quando múltiplos volumes são encontrados (raro)"""
+        """Exibe quando múltiplos volumes são encontrados"""
         resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║              ⚠️  MÚLTIPLOS VOLUMES ENCONTRADOS                ║
@@ -464,7 +488,7 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
         for i, vol in enumerate(volumes, 1):
             resultado += f"{i}. {vol['numero_volume']} ({vol['remetente']} → {vol['destinatario']})\n"
         
-        resultado += "\nPor favor, seja mais específico ou confira manualmente."
+        resultado += "\nPor favor, seja mais específico."
         
         self.txt_resultado.setStyleSheet("""
             QTextEdit {
@@ -493,7 +517,7 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
         
         resumo = f"""
 <b>📊 ESTATÍSTICAS DA CONFERÊNCIA</b><br><br>
-<b>Total de volumes:</b> {total_vol}<br>
+<b>Total de nºs de volume:</b> {total_vol}<br>
 <b>Total de caixas esperadas:</b> {exp}<br>
 <b>Caixas recebidas:</b> {rec} ({perc:.1f}%)<br><br>
 <b>Status dos volumes:</b><br>
@@ -527,11 +551,28 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
             )
             
     def finalizar_conferencia_handler(self):
-        """Finaliza a conferência"""
+        """Finaliza a conferência solicitando nome do conferente"""
         stats = obter_estatisticas_manifesto(self.manifesto_id)
         
         exp = stats['total_caixas_expedidas'] or 0
         rec = stats['total_caixas_recebidas'] or 0
+        
+        # Solicitar nome do conferente
+        nome, ok = QInputDialog.getText(
+            self,
+            "Finalizar Conferência",
+            "Digite o nome de quem recebeu o manifesto:",
+            QLineEdit.Normal,
+            ""
+        )
+        
+        if not ok or not nome.strip():
+            QMessageBox.warning(
+                self,
+                "Nome Obrigatório",
+                "É necessário informar o nome do responsável pela conferência!"
+            )
+            return
         
         if rec < exp:
             # Conferência incompleta
@@ -550,22 +591,30 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
             if reply == QMessageBox.No:
                 return
         
-        # Finalizar
+        # Finalizar e registrar conferente
         finalizar_conferencia(self.manifesto_id)
+        registrar_log(
+            self.manifesto_id,
+            "CONFERÊNCIA FINALIZADA",
+            f"Recebido por: {nome.strip()}",
+            nome.strip()
+        )
+        
         self.conferencia_finalizada.emit()
         
         QMessageBox.information(
             self,
             "✅ Conferência Finalizada",
             f"Conferência finalizada com sucesso!\n\n"
-            f"Recebidas: {rec}/{exp} caixas ({stats['percentual_recebido']:.1f}%)"
+            f"Recebidas: {rec}/{exp} caixas ({stats['percentual_recebido']:.1f}%)\n"
+            f"Responsável: {nome.strip()}"
         )
         
         self.close()
 
 
 class VolumeMultiploDialog(QDialog):
-    """Diálogo para conferir volume com múltiplas caixas"""
+    """Diálogo para selecionar caixas específicas de um volume"""
     
     def __init__(self, volume: dict, caixas: list, parent=None):
         super().__init__(parent)
@@ -576,7 +625,7 @@ class VolumeMultiploDialog(QDialog):
         
     def init_ui(self):
         """Inicializa a interface"""
-        self.setWindowTitle("Volume com Múltiplas Caixas")
+        self.setWindowTitle("Selecionar Caixas")
         self.setModal(True)
         self.setMinimumWidth(500)
         
@@ -594,17 +643,14 @@ class VolumeMultiploDialog(QDialog):
         info = QLabel(
             f"<b>Remetente:</b> {self.volume['remetente']} → "
             f"<b>Destinatário:</b> {self.volume['destinatario']}<br>"
-            f"<b>Quantidade Expedida:</b> {self.volume['quantidade_expedida']} caixas<br>"
-            f"<b>Peso Total:</b> {self.volume['peso_total']} kg | "
-            f"<b>Cubagem:</b> {self.volume['cubagem']} m³"
+            f"<b>Total de caixas:</b> {self.volume['quantidade_expedida']}"
         )
         info.setStyleSheet("padding: 10px; background-color: #f5f5f5; border-radius: 5px;")
         layout.addWidget(info)
         
-        # Status atual
-        layout.addWidget(QLabel("<b>Status de Recebimento:</b>"))
+        # Status e seleção de caixas
+        layout.addWidget(QLabel("<b>Selecione qual(is) caixa(s) está(ão) sendo recebida(s):</b>"))
         
-        # Lista de caixas
         self.checkboxes = []
         for caixa in self.caixas:
             cb = QCheckBox(
@@ -614,25 +660,10 @@ class VolumeMultiploDialog(QDialog):
             if caixa['status'] == 'RECEBIDA':
                 cb.setChecked(True)
                 cb.setEnabled(False)
-                cb.setText(cb.text() + f" ✅ (Recebida em {caixa['data_hora_recepcao'][:16]})")
+                cb.setText(cb.text() + f" ✅ (Já recebida)")
             
             self.checkboxes.append((cb, caixa))
             layout.addWidget(cb)
-        
-        # Opção rápida
-        layout.addWidget(QLabel("<b>Ou informe quantidade:</b>"))
-        
-        qty_layout = QHBoxLayout()
-        qty_layout.addWidget(QLabel("Quantas caixas foram recebidas agora?"))
-        
-        self.spin_qty = QSpinBox()
-        self.spin_qty.setMinimum(0)
-        nao_recebidas = len([c for c in self.caixas if c['status'] == 'NÃO RECEBIDA'])
-        self.spin_qty.setMaximum(nao_recebidas)
-        self.spin_qty.setValue(nao_recebidas)
-        qty_layout.addWidget(self.spin_qty)
-        
-        layout.addLayout(qty_layout)
         
         # Botões
         btn_layout = QHBoxLayout()
@@ -642,7 +673,7 @@ class VolumeMultiploDialog(QDialog):
         btn_cancelar.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancelar)
         
-        btn_confirmar = QPushButton("✅ Confirmar Recebimento")
+        btn_confirmar = QPushButton("✅ Confirmar Seleção")
         btn_confirmar.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
@@ -662,17 +693,23 @@ class VolumeMultiploDialog(QDialog):
         layout.addLayout(btn_layout)
         
     def confirmar(self):
-        """Confirma o recebimento das caixas"""
-        # Usar quantidade do spinner
-        quantidade = self.spin_qty.value()
+        """Confirma a seleção das caixas"""
+        selecionadas = []
+        for cb, caixa in self.checkboxes:
+            if cb.isChecked() and cb.isEnabled():
+                selecionadas.append(caixa)
         
-        if quantidade > 0:
-            marcar_volume_recebido(self.volume['id'], quantidade, "Usuário")
-            self.quantidade_marcada = quantidade
-            self.accept()
-        else:
+        if not selecionadas:
             QMessageBox.warning(
                 self,
                 "Aviso",
-                "Selecione pelo menos uma caixa!"
-            ) 
+                "Selecione pelo menos uma caixa que está sendo recebida!"
+            )
+            return
+        
+        # Marcar caixas como recebidas
+        for caixa in selecionadas:
+            marcar_caixa_recebida(self.volume['id'], caixa['numero_caixa'], "Usuário")
+        
+        self.quantidade_marcada = len(selecionadas)
+        self.accept()

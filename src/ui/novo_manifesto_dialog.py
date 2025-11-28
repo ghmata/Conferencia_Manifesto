@@ -196,9 +196,8 @@ class NovoManifestoDialog(QDialog):
                     self.dados_manifesto.get('numero_manifesto', '')
                 )
                 
-                # Data é preenchida automaticamente, mas se vier do PDF, usa ela
-                if self.dados_manifesto.get('data_manifesto'):
-                    self.txt_data.setText(self.dados_manifesto.get('data_manifesto'))
+                # Data SEMPRE usa a data atual (data de inclusão no sistema)
+                self.txt_data.setText(datetime.now().strftime("%d/%m/%Y"))
                 
                 self.txt_destino.setText(
                     self.dados_manifesto.get('terminal_destino', '')

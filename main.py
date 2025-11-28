@@ -1,4 +1,4 @@
-"""
+""" 
 Sistema de Conferência de Manifestos de Cargas - CAN
 Arquivo: main.py
 """

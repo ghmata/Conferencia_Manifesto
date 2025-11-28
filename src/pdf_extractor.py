@@ -35,7 +35,7 @@ class ManifestoExtractor:
             # Extrair dados do cabeçalho
             self.dados_manifesto = self._extrair_cabecalho(texto_completo)
             
-            # Extrair volumes (apenas PAMALS como destinatário)
+            # Extrair volumes (destinatário PAMALS e variações)
             self.volumes = self._extrair_volumes(texto_completo)
         
         return self.dados_manifesto, self.volumes
@@ -51,8 +51,6 @@ class ManifestoExtractor:
             'aeronave': None
         }
         
-        # Padrões específicos para o formato do PDF fornecido
-        
         # Número do manifesto - busca no início do documento
         match = re.search(r'Manifesto:\s*(?:Página\s*)?(\d{12})', texto, re.IGNORECASE)
         if match:
@@ -63,18 +61,16 @@ class ManifestoExtractor:
             if match:
                 dados['numero_manifesto'] = match.group(1)
         
-        # Data - formato DD/MM/YYYY
-        match = re.search(r'(\d{2}/\d{2}/\d{4})\s+\d{2}:\d{2}', texto)
-        if match:
-            dados['data_manifesto'] = match.group(1)
+        # Data - NÃO extrair do PDF, será preenchida com data atual
+        # dados['data_manifesto'] será None aqui
         
         # Terminal Origem
         match = re.search(r'TERMINAL DE ORIGEM:\s*([A-Z\-]+)', texto, re.IGNORECASE)
         if match:
             dados['terminal_origem'] = match.group(1).strip()
         else:
-            # Tenta buscar PCAN-XX
-            match = re.search(r'(PCAN-[A-Z]{2})', texto)
+            # Tenta buscar PCAN-XX ou TCTL-XX
+            match = re.search(r'((?:PCAN|TCTL)-[A-Z]{2})', texto)
             if match:
                 dados['terminal_origem'] = match.group(1)
         
@@ -83,8 +79,8 @@ class ManifestoExtractor:
         if match:
             dados['terminal_destino'] = match.group(1).strip()
         else:
-            # Busca o segundo PCAN-XX
-            matches = re.findall(r'(PCAN-[A-Z]{2})', texto)
+            # Busca o segundo PCAN-XX ou TCTL-XX
+            matches = re.findall(r'((?:PCAN|TCTL)-[A-Z]{2})', texto)
             if len(matches) >= 2:
                 dados['terminal_destino'] = matches[1]
         
@@ -93,8 +89,8 @@ class ManifestoExtractor:
         if match:
             dados['missao'] = match.group(1).strip()
         else:
-            # Busca FAB seguido de números
-            match = re.search(r'(FAB\s+\d+)', texto)
+            # Busca FAB seguido de números ou "Terrestre"
+            match = re.search(r'(FAB\s+\d+|Terrestre)', texto)
             if match:
                 dados['missao'] = match.group(1)
         
@@ -110,70 +106,252 @@ class ManifestoExtractor:
         
         return dados
     
+    def _padronizar_remetente(self, remetente: str) -> str:
+        """
+        Padroniza o nome do remetente, priorizando palavras-chave específicas
+        """
+        rem = remetente.upper().strip()
+        
+        # Regras de padronização
+        regras = [
+            ('CABW', 'CABW'),
+            ('CABE', 'CABE'),
+            ('BACO', 'BACO'),  # Captura BACO/ESUP, SUP BACO, BACOESUP, etc
+            ('BACG', 'BACG'),
+            ('GAC-PAC', 'GAC-PAC'),
+            ('GACPAC', 'GAC-PAC'),
+            ('BAGL', 'BAGL'),
+            ('CTLA', 'CTLA'),
+            ('CLTA', 'CTLA'),  # Correção comum
+            ('BAAN', 'BAAN'),
+            ('BASP', 'BASP'),
+            ('BANT', 'BANT'),
+        ]
+        
+        for palavra_chave, padrao in regras:
+            if palavra_chave in rem:
+                return padrao
+        
+        # Se não encontrou nenhuma regra, retorna o primeiro termo válido
+        partes = rem.split()
+        if partes:
+            return partes[0]
+        
+        return rem
+    
+    def _padronizar_destinatario(self, destinatario: str) -> str:
+        """
+        Padroniza o destinatário
+        """
+        dest = destinatario.upper().strip()
+        
+        # Se contém PAMALS ou PAMA, padronizar
+        if 'PAMALS' in dest or ('PAMA' in dest and 'LS' in dest):
+            return 'PAMALS'
+        
+        return dest
+    
+    def _e_destinatario_pamals(self, destinatario: str) -> bool:
+        """
+        Verifica se o destinatário é PAMALS ou suas variações
+        Aceita: PAMALS, PAMA-LS, LS PAMA-LS, etc
+        """
+        if not destinatario:
+            return False
+        
+        dest = destinatario.upper().strip()
+        
+        # Remover espaços extras
+        dest = re.sub(r'\s+', ' ', dest)
+        
+        # Variações aceitas
+        variacoes = [
+            'PAMALS',
+            'PAMA-LS',
+            'PAMA LS',
+            'LS PAMA-LS',
+            'LS PAMA LS',
+            'PAMA - LS',
+            'LS PAMA - LS'
+        ]
+        
+        # Verificar correspondência exata
+        if dest in variacoes:
+            return True
+        
+        # Verificar se contém PAMA e LS (mais flexível)
+        if 'PAMA' in dest and 'LS' in dest:
+            return True
+        
+        return False
+    
     def _extrair_volumes(self, texto: str) -> List[Dict]:
         """
         Extrai informações dos volumes do manifesto
-        IMPORTANTE: Apenas volumes onde DESTINATÁRIO é PAMALS
+        IMPORTANTE: Apenas volumes onde DESTINATÁRIO é PAMALS (ou variações)
         """
         volumes = []
         
         # Dividir texto em linhas
         linhas = texto.split('\n')
         
-        # Padrão mais flexível para capturar volumes
-        # Formato: REMETENTE DESTINATARIO NUMERO/VOLUME PESO CUBAGEM (resto)
-        # Exemplo: PAMALS PAMASP 251381004311/0001 25,00 0,340 Sem Restrições 1 04
+        # Debug - IMPORTANTE: Dados extraídos são inseridos imediatamente no banco
+        # Não há cache ou armazenamento temporário
+        print(f"\n{'='*80}")
+        print(f"EXTRAÇÃO EM TEMPO REAL - Formato padrão de tabela")
+        print(f"{'='*80}\n")
         
         for i, linha in enumerate(linhas):
-            # Busca linhas que começam com letras maiúsculas (remetentes)
-            if re.match(r'^[A-Z]{4,}', linha):
-                # Tenta extrair dados da linha
+            # Ignorar linhas de cabeçalho e rodapé
+            if any(palavra in linha.upper() for palavra in ['MANIFESTO', 'PÁGINA', 'TOTAIS', 'ENTREGUE', 'RECEBIDO']):
+                continue
+            
+            # Buscar linha que contenha número de volume (padrão: XXX.../XXXX)
+            if re.search(r'\d{12}/\d{4}', linha):
                 partes = linha.split()
                 
-                if len(partes) >= 4:
-                    remetente = partes[0]
-                    destinatario = partes[1]
-                    
-                    # FILTRO: Apenas volumes onde DESTINATÁRIO é PAMALS
-                    if destinatario.upper() != 'PAMALS':
-                        continue
-                    
-                    # Busca número de volume (formato: números/números)
-                    numero_volume = None
-                    peso = None
-                    cubagem = None
-                    quantidade_exp = 1
-                    prioridade = None
-                    
-                    for parte in partes[2:]:
-                        # Número de volume
-                        if '/' in parte and numero_volume is None:
-                            numero_volume = parte
-                        # Peso (número com vírgula ou ponto)
-                        elif re.match(r'^\d+[,\.]\d+$', parte) and peso is None:
-                            peso = self._converter_decimal(parte)
-                        # Cubagem (próximo número decimal após peso)
-                        elif re.match(r'^\d+[,\.]\d+$', parte) and peso is not None and cubagem is None:
-                            cubagem = self._converter_decimal(parte)
-                        # Prioridade (2 dígitos no final)
-                        elif re.match(r'^\d{2}$', parte):
-                            prioridade = parte
-                    
-                    # Se encontrou dados essenciais, adiciona o volume
-                    if numero_volume and remetente and destinatario:
-                        volume = {
-                            'remetente': remetente,
-                            'destinatario': destinatario,
-                            'numero_volume': numero_volume,
-                            'quantidade_expedida': quantidade_exp,
-                            'quantidade_recebida': 0,
-                            'peso_total': peso,
-                            'cubagem': cubagem,
-                            'prioridade': prioridade,
-                            'tipo_material': 'Sem Restrições',  # Padrão do PDF
-                            'embalagem': 'CAIXA'
-                        }
-                        volumes.append(volume)
+                if len(partes) < 3:
+                    continue
+                
+                # Extrair componentes
+                remetente = None
+                destinatario = None
+                numero_volume = None
+                peso = None
+                cubagem = None
+                quantidade_exp = 1  # Default
+                prioridade = None
+                tipo_material = None
+                
+                # 1. Encontrar número de volume
+                for j, parte in enumerate(partes):
+                    if re.match(r'\d{12}/\d{4}', parte):
+                        numero_volume_base = parte
+                        
+                        # Verificar se tem intervalo (-XXXX) para o número do volume
+                        if j < len(partes) - 1 and partes[j + 1].startswith('-'):
+                            prox = partes[j + 1]
+                            # Tem intervalo: /0001-0004
+                            numero_volume = numero_volume_base + prox
+                        else:
+                            numero_volume = numero_volume_base
+                        
+                        # CORREÇÃO CRÍTICA: Buscar a quantidade EXP diretamente da coluna
+                        # A quantidade está localizada após o tipo de material e antes da prioridade
+                        # Padrão: ... [TIPO_MATERIAL] [QUANTIDADE_EXP] [QUANTIDADE_REC] [PRIORIDADE]
+                        
+                        # Buscar a posição da prioridade (último número de 2 dígitos)
+                        idx_prioridade = None
+                        for idx, p in enumerate(partes):
+                            if re.match(r'^\d{2}$', p):
+                                idx_prioridade = idx
+                        
+                        if idx_prioridade is not None and idx_prioridade >= 2:
+                            # A quantidade EXP está 2 posições antes da prioridade
+                            # [..., quantidade_exp, quantidade_rec, prioridade]
+                            if idx_prioridade - 2 >= 0:
+                                quant_str = partes[idx_prioridade - 2]
+                                if re.match(r'^\d+$', quant_str):
+                                    quantidade_exp = int(quant_str)
+                        
+                        # ALTERNATIVA MELHORADA: Procurar por padrão específico da tabela
+                        # Buscar por números inteiros entre o número do volume e a prioridade
+                        # que não sejam decimais (peso/cubagem) e não sejam a prioridade
+                        if quantidade_exp == 1:  # Se não encontrou pelo método anterior
+                            for k in range(j + 1, len(partes)):
+                                token = partes[k]
+                                # Se é um número inteiro e não é a prioridade
+                                if (re.match(r'^\d+$', token) and 
+                                    (idx_prioridade is None or k != idx_prioridade) and
+                                    not re.match(r'^\d+[,\.]\d+$', token)):
+                                    # Verificar se não é um número de volume
+                                    if not re.match(r'\d{12}/\d{4}', token):
+                                        potencial_qtd = int(token)
+                                        if 1 <= potencial_qtd <= 999:  # Quantidade razoável
+                                            quantidade_exp = potencial_qtd
+                                            break
+                        
+                        # Destinatário está ANTES do número de volume
+                        if j > 0:
+                            destinatario = partes[j - 1]
+                            
+                            # Padronizar destinatário
+                            destinatario = self._padronizar_destinatario(destinatario)
+                            
+                            # Remetente é tudo antes do destinatário
+                            remetente_partes = []
+                            for k in range(j - 1):
+                                palavra = partes[k]
+                                if re.match(r'^\d+[,\.]\d+$', palavra) or re.match(r'^\d{12}', palavra):
+                                    break
+                                remetente_partes.append(palavra)
+                            
+                            if remetente_partes:
+                                remetente_bruto = ' '.join(remetente_partes)
+                                # Padronizar remetente
+                                remetente = self._padronizar_remetente(remetente_bruto)
+                        
+                        # Peso e cubagem DEPOIS do número
+                        if j < len(partes) - 2:
+                            for m in range(j + 1, min(j + 8, len(partes))):
+                                valor = partes[m]
+                                if re.match(r'^\d+[,\.]\d+$', valor):
+                                    if peso is None:
+                                        peso = self._converter_decimal(valor)
+                                    elif cubagem is None:
+                                        cubagem = self._converter_decimal(valor)
+                                        break
+                        
+                        # Tipo de material
+                        if 'Aeronáutico' in linha or 'Aeronautico' in linha:
+                            tipo_material = 'Aeronáutico'
+                        elif 'Sem Restrições' in linha or 'Sem Restricoes' in linha or 'Sem Reestições' in linha:
+                            tipo_material = 'Sem Restrições'
+                        elif 'Gás Comprimido' in linha or 'Gas Comprimido' in linha:
+                            tipo_material = 'Gás Comprimido'
+                        else:
+                            tipo_material = 'Geral'
+                        
+                        # Prioridade já foi encontrada acima
+                        if idx_prioridade is not None:
+                            prioridade = partes[idx_prioridade]
+                        
+                        break
+                
+                # Verificar se encontrou dados essenciais
+                if not numero_volume or not destinatario:
+                    continue
+                
+                # Se não encontrou remetente, usar "DESCONHECIDO"
+                if not remetente or remetente.strip() == '':
+                    remetente = "DESCONHECIDO"
+                
+                # FILTRO: Verificar se destinatário é PAMALS (ou variações)
+                if not self._e_destinatario_pamals(destinatario):
+                    print(f"❌ IGNORADO - Dest: '{destinatario}' não é PAMALS")
+                    continue
+                
+                print(f"✅ EXTRAÍDO - Rem: '{remetente}' | Dest: '{destinatario}' | Vol: {numero_volume} | Qtd: {quantidade_exp}")
+                
+                volume = {
+                    'remetente': remetente.strip(),
+                    'destinatario': destinatario.strip(),
+                    'numero_volume': numero_volume,
+                    'quantidade_expedida': quantidade_exp,
+                    'quantidade_recebida': 0,
+                    'peso_total': peso,
+                    'cubagem': cubagem,
+                    'prioridade': prioridade,
+                    'tipo_material': tipo_material,
+                    'embalagem': 'CAIXA'
+                }
+                volumes.append(volume)
+        
+        print(f"\n{'='*80}")
+        print(f"EXTRAÇÃO CONCLUÍDA: {len(volumes)} volumes (números de volume)")
+        print(f"Total de CAIXAS: {sum(v['quantidade_expedida'] for v in volumes)}")
+        print(f"Obs: Total de volumes = soma de todos os nºs de volume + caixas adicionais")
+        print(f"{'='*80}\n")
         
         return volumes
     
@@ -196,8 +374,7 @@ class ManifestoExtractor:
         if not self.dados_manifesto.get('numero_manifesto'):
             erros.append("Número do manifesto não encontrado")
         
-        if not self.dados_manifesto.get('data_manifesto'):
-            erros.append("Data do manifesto não encontrada")
+        # Data não é mais obrigatória aqui (será preenchida automaticamente)
         
         if not self.dados_manifesto.get('terminal_destino'):
             erros.append("Terminal de destino não encontrado")
@@ -223,10 +400,22 @@ class ManifestoExtractor:
     def extrair_ultimos_digitos(numero_volume: str, quantidade: int) -> str:
         """
         Extrai os últimos N dígitos de um número de volume
-        Remove caracteres não numéricos
+        IMPORTANTE: Extrai apenas os dígitos ANTES da barra "/"
+        
+        Exemplo: 251381004311/0001
+        - 4 dígitos: "4311" (últimos 4 antes da /)
+        - 7 dígitos: "1004311" (últimos 7 antes da /)
+        
+        Os números DEPOIS da / referem-se à identificação de caixas (0001-0004)
         """
+        # Pegar apenas a parte ANTES da barra
+        if '/' in numero_volume:
+            parte_antes_barra = numero_volume.split('/')[0]
+        else:
+            parte_antes_barra = numero_volume
+        
         # Remover tudo exceto números
-        apenas_numeros = re.sub(r'\D', '', numero_volume)
+        apenas_numeros = re.sub(r'\D', '', parte_antes_barra)
         
         # Retornar últimos N dígitos
         return apenas_numeros[-quantidade:] if len(apenas_numeros) >= quantidade else apenas_numeros
@@ -235,10 +424,11 @@ class ManifestoExtractor:
     def determinar_regra_busca(remetente: str) -> int:
         """
         Determina quantos dígitos usar na busca baseado no remetente
-        CABW: 7 dígitos
+        CABW e CABE: 7 dígitos
         Outros: 4 dígitos
         """
-        return 7 if remetente.upper() == 'CABW' else 4
+        rem = remetente.upper()
+        return 7 if ('CABW' in rem or 'CABE' in rem) else 4
 
 
 # ==================== FUNÇÕES AUXILIARES ====================
@@ -265,7 +455,7 @@ def criar_manifesto_exemplo() -> Tuple[Dict, List[Dict]]:
     """
     dados_manifesto = {
         'numero_manifesto': '202531000635',
-        'data_manifesto': '24/11/2025',
+        'data_manifesto': datetime.now().strftime("%d/%m/%Y"),  # Data atual
         'terminal_origem': 'PCAN-GR',
         'terminal_destino': 'PCAN-LS',
         'missao': 'FAB 2309',
@@ -322,28 +512,28 @@ def criar_manifesto_exemplo() -> Tuple[Dict, List[Dict]]:
             'embalagem': 'ENVELOPE'
         },
         {
-            'remetente': 'PAMASP',
+            'remetente': 'AFA',
             'destinatario': 'PAMALS',
-            'numero_volume': '251381004371/0001',
-            'quantidade_expedida': 1,
+            'numero_volume': '251374000524/0001',
+            'quantidade_expedida': 4,
             'quantidade_recebida': 0,
-            'peso_total': 1.0,
-            'cubagem': 0.010,
+            'peso_total': 20.0,
+            'cubagem': 0.190,
             'prioridade': '04',
-            'tipo_material': 'Sem Restrições',
-            'embalagem': 'ENVELOPE'
+            'tipo_material': 'Aeronáutico',
+            'embalagem': 'CAIXA'
         },
         {
-            'remetente': 'PAMASP',
+            'remetente': 'BACO / BACO',
             'destinatario': 'PAMALS',
-            'numero_volume': '251381004375/0001',
-            'quantidade_expedida': 1,
+            'numero_volume': '251386000550/0001',
+            'quantidade_expedida': 4,
             'quantidade_recebida': 0,
-            'peso_total': 1.0,
-            'cubagem': 0.010,
-            'prioridade': '04',
+            'peso_total': 219.5,
+            'cubagem': 125.484,
+            'prioridade': '06',
             'tipo_material': 'Sem Restrições',
-            'embalagem': 'ENVELOPE'
+            'embalagem': 'CAIXA'
         }
     ]
     
