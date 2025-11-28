@@ -1,0 +1,23 @@
+# Sistema de Conferência de Manifestos - CAN
+# Requirements.txt - ATUALIZADO
+
+# Interface Gráfica (CRÍTICO)
+PyQt5==5.15.9
+
+# Processamento de PDF (CRÍTICO)
+pdfplumber==0.10.3
+
+# Dependências NÃO UTILIZADAS - REMOVIDAS:
+# PyPDF2 - Não é usado, substituído por pdfplumber
+# pandas - Não é usado nos códigos atuais
+# python-dotenv - Não é usado
+# openpyxl - Não é usado (exportação é CSV)
+# pytesseract - Não é usado (sem OCR)
+# Pillow - Não é usado
+# psycopg2-binary - Banco é SQLite
+
+# Dependências do Sistema (instalar separadamente):
+# Poppler (para pdfplumber):
+#   Windows: Incluído no instalador
+#   Linux: sudo apt-get install poppler-utils
+#   macOS: brew install poppler
