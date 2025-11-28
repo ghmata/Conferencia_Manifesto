@@ -12,14 +12,19 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon, QColor, QFont
 from datetime import datetime
 import time
+import sys
+import os
 
-from src.database import (listar_manifestos, obter_estatisticas_manifesto,
-                          obter_manifesto, adicionar_volume, marcar_volume_recebido,
-                          listar_volumes)
-from src.pdf_extractor import extrair_manifesto_pdf, criar_manifesto_exemplo
-from src.ui.novo_manifesto_dialog import NovoManifestoDialog
-from src.ui.conferencia_window import ConferenciaWindow
-from src.ui.detalhes_manifesto_dialog import DetalhesManifestoDialog
+# Adiciona o diretório src ao path para importações
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from database import (listar_manifestos, obter_estatisticas_manifesto,
+                      obter_manifesto, adicionar_volume, marcar_volume_recebido,
+                      listar_volumes)
+from pdf_extractor import extrair_manifesto_pdf, criar_manifesto_exemplo
+from ui.novo_manifesto_dialog import NovoManifestoDialog
+from ui.conferencia_window import ConferenciaWindow
+from ui.detalhes_manifesto_dialog import DetalhesManifestoDialog
 
 # Senha para apagar manifestos
 SENHA_EXCLUSAO = "pitaco"
@@ -101,6 +106,24 @@ class MainWindow(QMainWindow):
         """)
         btn_exemplo.clicked.connect(self.criar_manifesto_exemplo)
         header_layout.addWidget(btn_exemplo)
+
+        # Botão Busca Avançada
+        btn_busca = QPushButton("🔍 Busca Avançada")
+        btn_busca.setStyleSheet("""
+            QPushButton {
+                background-color: #9C27B0;
+                color: white;
+                border: none;
+                padding: 10px 20px;
+                font-size: 14px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #7B1FA2;
+            }
+        """)
+        btn_busca.clicked.connect(self.abrir_busca)
+        header_layout.addWidget(btn_busca)
         
         layout.addLayout(header_layout)
         
@@ -113,7 +136,7 @@ class MainWindow(QMainWindow):
         ])
         
         # Configurar tabela
-        self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)  # pyright: ignore[reportOptionalMemberAccess]
         self.tabela.setSelectionBehavior(QTableWidget.SelectRows)
         self.tabela.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabela.setAlternatingRowColors(True)
@@ -149,39 +172,110 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Sistema pronto")
         
+    def criar_menu(self): # type: ignore
+        """Cria o menu da aplicação"""
+        menubar = self.menuBar()
+        
+        # Menu Arquivo
+        menu_arquivo = menubar.addMenu("&Arquivo") # type: ignore
+        
+        acao_novo = QAction("&Novo Manifesto", self)
+        acao_novo.setShortcut("Ctrl+N")
+        acao_novo.triggered.connect(self.novo_manifesto)
+        menu_arquivo.addAction(acao_novo) # type: ignore
+
+        # Nova ação: Busca Avançada
+        acao_busca = QAction("&Busca Avançada", self)
+        acao_busca.setShortcut("Ctrl+F")
+        acao_busca.triggered.connect(self.abrir_busca)
+        menu_arquivo.addAction(acao_busca) # type: ignore
+        
+        menu_arquivo.addSeparator() # type: ignore
+        
+        acao_sair = QAction("&Sair", self)
+        acao_sair.setShortcut("Ctrl+Q")
+        acao_sair.triggered.connect(self.close) # type: ignore
+        menu_arquivo.addAction(acao_sair) # type: ignore
+        
+        # Menu Visualizar
+        menu_view = menubar.addMenu("&Visualizar") # type: ignore
+        
+        acao_atualizar = QAction("&Atualizar", self)
+        acao_atualizar.setShortcut("F5")
+        acao_atualizar.triggered.connect(self.atualizar_tabela)
+        menu_view.addAction(acao_atualizar) # type: ignore
+        
+        # Menu Ajuda
+        menu_ajuda = menubar.addMenu("&Ajuda") # type: ignore
+        
+        acao_sobre = QAction("&Sobre", self)
+        acao_sobre.triggered.connect(self.mostrar_sobre)
+        menu_ajuda.addAction(acao_sobre) # type: ignore
+        
+    def criar_toolbar(self): # type: ignore
+        """Cria a toolbar"""
+        toolbar = QToolBar()
+        toolbar.setIconSize(QSize(32, 32))
+        self.addToolBar(toolbar)
+        
+        # Botão Atualizar
+        acao_atualizar = QAction("🔄 Atualizar", self)
+        acao_atualizar.triggered.connect(self.atualizar_tabela)
+        toolbar.addAction(acao_atualizar)
+        
+        toolbar.addSeparator()
+        
+        # Botão Novo Manifesto
+        acao_novo = QAction("➕ Novo", self)
+        acao_novo.triggered.connect(self.novo_manifesto)
+        toolbar.addAction(acao_novo)
+
+        # Botão Busca Avançada
+        acao_busca = QAction("🔍 Busca", self)
+        acao_busca.triggered.connect(self.abrir_busca)
+        toolbar.addAction(acao_busca)
+        
+    def abrir_busca(self):
+        """Abre janela de busca avançada"""
+        from ui.busca_window import BuscaWindow
+        self.busca_window = BuscaWindow(self)
+        self.busca_window.show()
+
+    # ... (o restante do código permanece igual, mantendo todos os métodos existentes)
+        
     def criar_menu(self):
         """Cria o menu da aplicação"""
         menubar = self.menuBar()
         
         # Menu Arquivo
-        menu_arquivo = menubar.addMenu("&Arquivo")
+        menu_arquivo = menubar.addMenu("&Arquivo") # type: ignore
         
         acao_novo = QAction("&Novo Manifesto", self)
         acao_novo.setShortcut("Ctrl+N")
         acao_novo.triggered.connect(self.novo_manifesto)
-        menu_arquivo.addAction(acao_novo)
+        menu_arquivo.addAction(acao_novo) # type: ignore
         
-        menu_arquivo.addSeparator()
+        menu_arquivo.addSeparator() # type: ignore
         
         acao_sair = QAction("&Sair", self)
         acao_sair.setShortcut("Ctrl+Q")
-        acao_sair.triggered.connect(self.close)
-        menu_arquivo.addAction(acao_sair)
+        acao_sair.triggered.connect(self.close) # type: ignore
+        menu_arquivo.addAction(acao_sair) # type: ignore
         
         # Menu Visualizar
-        menu_view = menubar.addMenu("&Visualizar")
+        menu_view = menubar.addMenu("&Visualizar") # type: ignore
         
         acao_atualizar = QAction("&Atualizar", self)
         acao_atualizar.setShortcut("F5")
         acao_atualizar.triggered.connect(self.atualizar_tabela)
-        menu_view.addAction(acao_atualizar)
+        menu_view.addAction(acao_atualizar) # type: ignore
         
         # Menu Ajuda
-        menu_ajuda = menubar.addMenu("&Ajuda")
+        menu_ajuda = menubar.addMenu("&Ajuda") # type: ignore
         
         acao_sobre = QAction("&Sobre", self)
         acao_sobre.triggered.connect(self.mostrar_sobre)
-        menu_ajuda.addAction(acao_sobre)
+        menu_ajuda.addAction(acao_sobre) # type: ignore
         
     def criar_toolbar(self):
         """Cria a toolbar"""
@@ -244,7 +338,7 @@ class MainWindow(QMainWindow):
             # Status
             status = manifesto['status']
             item_status = QTableWidgetItem(self._formatar_status(status))
-            item_status.setTextAlignment(Qt.AlignCenter)
+            item_status.setTextAlignment(Qt.AlignCenter) # type: ignore
             
             if status == 'TOTALMENTE RECEBIDO':
                 item_status.setBackground(QColor(76, 175, 80, 50))
@@ -261,7 +355,7 @@ class MainWindow(QMainWindow):
             rec = manifesto['total_caixas_recebidas'] or 0
             
             item_volumes = QTableWidgetItem(f"{rec}/{exp} caixas ({total_vol} vol.)")
-            item_volumes.setTextAlignment(Qt.AlignCenter)
+            item_volumes.setTextAlignment(Qt.AlignCenter) # type: ignore
             self.tabela.setItem(i, 4, item_volumes)
             
             # Botões de ação (4 FUNCIONALIDADES)
@@ -564,7 +658,7 @@ class MainWindow(QMainWindow):
         reply = QMessageBox.warning(
             self,
             "Confirmação",
-            f"Tem certeza que deseja APAGAR o manifesto {manifesto['numero_manifesto']}?\n\n"
+            f"Tem certeza que deseja APAGAR o manifesto {manifesto['numero_manifesto']}?\n\n" # type: ignore
             f"Esta ação NÃO pode ser desfeita!",
             QMessageBox.Yes | QMessageBox.No
         )
@@ -591,7 +685,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(
                     self,
                     "Sucesso",
-                    f"Manifesto {manifesto['numero_manifesto']} apagado com sucesso!"
+                    f"Manifesto {manifesto['numero_manifesto']} apagado com sucesso!" # type: ignore
                 )
                 
             except Exception as e:
