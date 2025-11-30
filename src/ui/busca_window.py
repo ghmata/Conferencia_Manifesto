@@ -7,8 +7,8 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QLineEdit, QPushButton, QTableWidget,
                              QTableWidgetItem, QTabWidget, QHeaderView,
                              QMessageBox, QDateEdit, QComboBox, QFormLayout,
-                             QGroupBox, QCheckBox)
-from PyQt5.QtCore import QDate
+                             QGroupBox, QCheckBox, QDialog, QDialogButtonBox, QSpinBox, QApplication)
+from PyQt5.QtCore import QDate, Qt
 from PyQt5.QtGui import QFont, QColor
 import sys
 import os
@@ -16,7 +16,9 @@ import os
 # Adiciona o diretório pai ao path para importações
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from database import (listar_manifestos, listar_volumes)
+from database import (listar_manifestos, listar_volumes, obter_manifesto, 
+                       marcar_volume_recebido, obter_caixas, marcar_caixa_recebida,
+                       iniciar_conferencia, finalizar_conferencia, obter_volume)
 
 
 class BuscaWindow(QMainWindow):
@@ -24,6 +26,7 @@ class BuscaWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.conferencia_windows = {}  # Dicionário para controlar janelas abertas
         self.init_ui()
         
     def init_ui(self):
@@ -148,8 +151,6 @@ class BuscaWindow(QMainWindow):
         
         layout.addLayout(btn_layout)
         
-        # No método criar_tab_manifestos, modifique a configuração da tabela:
-
         # Tabela de resultados
         self.tabela_manifestos = QTableWidget()
         self.tabela_manifestos.setColumnCount(7)
@@ -162,6 +163,12 @@ class BuscaWindow(QMainWindow):
         header = self.tabela_manifestos.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.Stretch)
+            # Definir largura específica para a coluna Ações
+            header.setSectionResizeMode(6, QHeaderView.Fixed)
+            self.tabela_manifestos.setColumnWidth(6, 180)  # Aumentar largura da coluna Ações
+        
+        # Aumentar altura padrão das linhas
+        self.tabela_manifestos.verticalHeader().setDefaultSectionSize(60)  # Aumentado de 50 para 60
         
         # Permitir seleção de texto nas células
         self.tabela_manifestos.setSelectionBehavior(QTableWidget.SelectItems)
@@ -187,45 +194,6 @@ class BuscaWindow(QMainWindow):
             }
         """)
 
-# No método criar_tab_volumes, modifique a configuração da tabela:
-
-        # Tabela de resultados
-        self.tabela_volumes = QTableWidget()
-        self.tabela_volumes.setColumnCount(8)
-        self.tabela_volumes.setHorizontalHeaderLabels([
-            "Nº Volume", "Remetente", "Destinatário", "Nº Manifesto",
-            "Data", "Status Volume", "Caixas", "Ações"
-        ])
-        
-        # Configurar header
-        header = self.tabela_volumes.horizontalHeader()
-        if header is not None:
-            header.setSectionResizeMode(QHeaderView.Stretch)
-        
-        # Permitir seleção de texto nas células
-        self.tabela_volumes.setSelectionBehavior(QTableWidget.SelectItems)
-        self.tabela_volumes.setSelectionMode(QTableWidget.ContiguousSelection)
-        self.tabela_volumes.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.tabela_volumes.setAlternatingRowColors(True)
-        
-        self.tabela_volumes.setStyleSheet("""
-            QTableWidget {
-                border: 1px solid #ddd;
-                border-radius: 5px;
-                background-color: white;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                selection-background-color: #b3d9ff;
-            }
-            QHeaderView::section {
-                background-color: #f5f5f5;
-                padding: 10px;
-                border: none;
-                font-weight: bold;
-            }
-        """)
-        
         layout.addWidget(self.tabela_manifestos)
         
         # Estatísticas da busca
@@ -272,8 +240,6 @@ class BuscaWindow(QMainWindow):
         btn_buscar_manual.clicked.connect(self.buscar_volumes)
         layout.addWidget(btn_buscar_manual)
         
-        # No método criar_tab_volumes, modifique a configuração da tabela:
-
         # Tabela de resultados
         self.tabela_volumes = QTableWidget()
         self.tabela_volumes.setColumnCount(8)
@@ -286,6 +252,12 @@ class BuscaWindow(QMainWindow):
         header = self.tabela_volumes.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(QHeaderView.Stretch)
+            # Definir largura específica para a coluna Ações
+            header.setSectionResizeMode(7, QHeaderView.Fixed)
+            self.tabela_volumes.setColumnWidth(7, 200)  # Aumentar largura da coluna Ações
+        
+        # Aumentar altura padrão das linhas
+        self.tabela_volumes.verticalHeader().setDefaultSectionSize(60)  # Aumentado de 50 para 60
         
         # Permitir seleção de texto nas células
         self.tabela_volumes.setSelectionBehavior(QTableWidget.SelectItems)
@@ -317,6 +289,118 @@ class BuscaWindow(QMainWindow):
         self.lbl_stats_volumes = QLabel("Digite o número do volume para buscar")
         self.lbl_stats_volumes.setStyleSheet("color: #666; font-style: italic;")
         layout.addWidget(self.lbl_stats_volumes)
+        
+    def criar_acoes_manifesto(self, manifesto_id):
+        """Cria os botões de ação para um manifesto"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setSpacing(5)
+        
+        btn_detalhes = QPushButton("Ver\nDetalhes")
+        btn_detalhes.setToolTip("Ver detalhes")
+        btn_detalhes.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 5px;
+                min-width: 30px;  /* Aumentado de 25px para 30px */
+            }
+            QPushButton:hover {
+                background-color: #0b7dda;
+            }
+        """)
+        btn_detalhes.clicked.connect(lambda: self.ver_detalhes_manifesto(manifesto_id))
+        
+        btn_conferir = QPushButton("Conferir\nManifesto")
+        btn_conferir.setToolTip("Iniciar conferência")
+        btn_conferir.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 5px;
+                min-width: 30px;  /* Aumentado de 25px para 30px */
+            }
+            QPushButton:hover {
+                background-color: #3d8b40;
+            }
+        """)
+        btn_conferir.clicked.connect(lambda: self.iniciar_conferencia_manifesto(manifesto_id))
+        
+        layout.addWidget(btn_detalhes)
+        layout.addWidget(btn_conferir)
+        
+        widget.setLayout(layout)
+        return widget
+        
+    def criar_acoes_volume(self, volume_id, quantidade_expedida, quantidade_recebida, manifesto_id):
+        """Cria os botões de ação para um volume"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(5, 2, 5, 2)
+        layout.setSpacing(5)
+        
+        btn_detalhes = QPushButton("Ver\nDetalhes")
+        btn_detalhes.setToolTip("Ver detalhes")
+        btn_detalhes.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 5px;
+                min-width: 30px;  /* Aumentado de 25px para 30px */
+            }
+            QPushButton:hover {
+                background-color: #0b7dda;
+            }
+        """)
+        btn_detalhes.clicked.connect(lambda: self.ver_detalhes_volume(volume_id))
+        
+        btn_conferir = QPushButton("Conferir\nManifesto")
+        btn_conferir.setToolTip("Iniciar conferência")
+        btn_conferir.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 5px;
+                min-width: 30px;  /* Aumentado de 25px para 30px */
+            }
+            QPushButton:hover {
+                background-color: #3d8b40;
+            }
+        """)
+        btn_conferir.clicked.connect(lambda: self.abrir_conferencia(manifesto_id))
+        
+        btn_receber = QPushButton("Receber\nVolume")
+        btn_receber.setToolTip("Receber volume")
+        btn_receber.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 5px;
+                min-width: 30px;  /* Aumentado de 25px para 30px */
+            }
+            QPushButton:hover {
+                background-color: #e68900;
+            }
+        """)
+        btn_receber.clicked.connect(lambda: self.receber_volume_direto(volume_id, manifesto_id, quantidade_expedida))
+        
+        layout.addWidget(btn_detalhes)
+        layout.addWidget(btn_conferir)
+        layout.addWidget(btn_receber)
+        
+        widget.setLayout(layout)
+        return widget
         
     def limpar_filtros_manifestos(self):
         """Limpa todos os filtros de manifestos"""
@@ -417,22 +501,29 @@ class BuscaWindow(QMainWindow):
         self.tabela_manifestos.setRowCount(len(manifestos))
         
         for i, manifesto in enumerate(manifestos):
+            # Aumentar altura específica da linha (opcional, já temos altura padrão)
+            self.tabela_manifestos.setRowHeight(i, 60)  # Aumentado de 50 para 60
+            
             # Nº Manifesto
             item_numero = QTableWidgetItem(manifesto['numero_manifesto'] or "N/A")
+            item_numero.setTextAlignment(Qt.AlignCenter)
             self.tabela_manifestos.setItem(i, 0, item_numero)
             
             # Data
             data = manifesto['data_manifesto'] or "N/A"
-            self.tabela_manifestos.setItem(i, 1, QTableWidgetItem(data))
+            item_data = QTableWidgetItem(data)
+            item_data.setTextAlignment(Qt.AlignCenter)
+            self.tabela_manifestos.setItem(i, 1, item_data)
             
             # Destino
             item_destino = QTableWidgetItem(manifesto['terminal_destino'] or "N/A")
+            item_destino.setTextAlignment(Qt.AlignCenter)
             self.tabela_manifestos.setItem(i, 2, item_destino)
             
             # Status
             status_manifesto = manifesto['status']
             item_status = QTableWidgetItem(self._formatar_status_manifesto(status_manifesto))
-            item_status.setTextAlignment(0x0004)  # Qt.AlignCenter = 0x0004
+            item_status.setTextAlignment(Qt.AlignCenter)
             
             if status_manifesto == 'TOTALMENTE RECEBIDO':
                 item_status.setBackground(QColor(76, 175, 80, 50))
@@ -446,34 +537,19 @@ class BuscaWindow(QMainWindow):
             # Volumes
             total_vol = manifesto.get('total_volumes', 0) or 0
             item_volumes = QTableWidgetItem(f"{total_vol} vol.")
-            item_volumes.setTextAlignment(0x0004)  # Qt.AlignCenter = 0x0004
+            item_volumes.setTextAlignment(Qt.AlignCenter)
             self.tabela_manifestos.setItem(i, 4, item_volumes)
             
             # Caixas
             exp = manifesto.get('total_caixas_expedidas', 0) or 0
             rec = manifesto.get('total_caixas_recebidas', 0) or 0
             item_caixas = QTableWidgetItem(f"{rec}/{exp}")
-            item_caixas.setTextAlignment(0x0004)  # Qt.AlignCenter = 0x0004
+            item_caixas.setTextAlignment(Qt.AlignCenter)
             self.tabela_manifestos.setItem(i, 5, item_caixas)
             
-            # Botão Ver Detalhes
-            btn_detalhes = QPushButton("Detalhes")
-            btn_detalhes.setStyleSheet("""
-                QPushButton {
-                    background-color: #2196F3;
-                    color: white;
-                    padding: 5px 10px;
-                    border: none;
-                    border-radius: 3px;
-                    font-size: 11px;
-                }
-                QPushButton:hover {
-                    background-color: #0b7dda;
-                }
-            """)
-            btn_detalhes.setToolTip("Ver detalhes do manifesto")
-            btn_detalhes.clicked.connect(lambda checked, m_id=manifesto['id']: self.ver_detalhes_manifesto(m_id))
-            self.tabela_manifestos.setCellWidget(i, 6, btn_detalhes)
+            # Ações
+            acoes = self.criar_acoes_manifesto(manifesto['id'])
+            self.tabela_manifestos.setCellWidget(i, 6, acoes)
     
     def buscar_volumes_em_tempo_real(self):
         """Busca volumes em tempo real enquanto digita"""
@@ -519,26 +595,39 @@ class BuscaWindow(QMainWindow):
                 volume = item['volume']
                 manifesto = item['manifesto']
                 
+                # Aumentar altura específica da linha
+                self.tabela_volumes.setRowHeight(i, 60)  # Aumentado de 50 para 60
+                
                 # Nº Volume
-                self.tabela_volumes.setItem(i, 0, QTableWidgetItem(volume['numero_volume']))
+                item_numero = QTableWidgetItem(volume['numero_volume'])
+                item_numero.setTextAlignment(Qt.AlignCenter)
+                self.tabela_volumes.setItem(i, 0, item_numero)
                 
                 # Remetente
-                self.tabela_volumes.setItem(i, 1, QTableWidgetItem(volume['remetente']))
+                item_remetente = QTableWidgetItem(volume['remetente'])
+                item_remetente.setTextAlignment(Qt.AlignCenter)
+                self.tabela_volumes.setItem(i, 1, item_remetente)
                 
                 # Destinatário
-                self.tabela_volumes.setItem(i, 2, QTableWidgetItem(volume['destinatario']))
+                item_destinatario = QTableWidgetItem(volume['destinatario'])
+                item_destinatario.setTextAlignment(Qt.AlignCenter)
+                self.tabela_volumes.setItem(i, 2, item_destinatario)
                 
                 # Nº Manifesto
-                self.tabela_volumes.setItem(i, 3, QTableWidgetItem(manifesto['numero_manifesto']))
+                item_manifesto = QTableWidgetItem(manifesto['numero_manifesto'])
+                item_manifesto.setTextAlignment(Qt.AlignCenter)
+                self.tabela_volumes.setItem(i, 3, item_manifesto)
                 
                 # Data do Manifesto
                 data = manifesto['data_manifesto'] or "N/A"
-                self.tabela_volumes.setItem(i, 4, QTableWidgetItem(data))
+                item_data = QTableWidgetItem(data)
+                item_data.setTextAlignment(Qt.AlignCenter)
+                self.tabela_volumes.setItem(i, 4, item_data)
                 
                 # Status do Volume
                 status = volume['status']
                 item_status = QTableWidgetItem(self._formatar_status_volume(status))
-                item_status.setTextAlignment(0x0004)  # Qt.AlignCenter = 0x0004
+                item_status.setTextAlignment(Qt.AlignCenter)
                 
                 if status == 'COMPLETO':
                     item_status.setBackground(QColor(76, 175, 80, 50))
@@ -554,55 +643,17 @@ class BuscaWindow(QMainWindow):
                 # Caixas
                 caixas_texto = f"{volume['quantidade_recebida']}/{volume['quantidade_expedida']}"
                 item_caixas = QTableWidgetItem(caixas_texto)
-                item_caixas.setTextAlignment(0x0004)  # Qt.AlignCenter = 0x0004
+                item_caixas.setTextAlignment(Qt.AlignCenter)
                 self.tabela_volumes.setItem(i, 6, item_caixas)
                 
-                # Botões de ação
-                btn_widget = QWidget()
-                btn_layout = QHBoxLayout(btn_widget)
-                btn_layout.setContentsMargins(5, 2, 5, 2)
-                btn_layout.setSpacing(3)
-                
-                # Botão Ver Manifesto
-                btn_manifesto = QPushButton("📋")
-                btn_manifesto.setToolTip("Ver manifesto")
-                btn_manifesto.setStyleSheet("""
-                    QPushButton {
-                        background-color: #2196F3;
-                        color: white;
-                        border: none;
-                        padding: 5px 8px;
-                        border-radius: 3px;
-                        font-size: 12px;
-                    }
-                    QPushButton:hover {
-                        background-color: #0b7dda;
-                    }
-                """)
-                btn_manifesto.clicked.connect(lambda checked, m_id=manifesto['id']: self.ver_detalhes_manifesto(m_id))
-                btn_layout.addWidget(btn_manifesto)
-                
-                # Botão Conferir
-                btn_conferir = QPushButton("🔍")
-                btn_conferir.setToolTip("Conferir volume")
-                btn_conferir.setStyleSheet("""
-                    QPushButton {
-                        background-color: #FF9800;
-                        color: white;
-                        border: none;
-                        padding: 5px 8px;
-                        border-radius: 3px;
-                        font-size: 12px;
-                    }
-                    QPushButton:hover {
-                        background-color: #e68900;
-                    }
-                """)
-                btn_conferir.clicked.connect(lambda checked, m_id=manifesto['id']: self.abrir_conferencia(m_id))
-                btn_layout.addWidget(btn_conferir)
-                
-                btn_layout.addStretch()
-                self.tabela_volumes.setCellWidget(i, 7, btn_widget)
+                # Ações
+                acoes = self.criar_acoes_volume(
+                    volume['id'], 
+                    volume['quantidade_expedida'], 
+                    volume['quantidade_recebida'],
+                    volume['manifesto_id']
+                )
+                self.tabela_volumes.setCellWidget(i, 7, acoes)
             
             # Atualizar estatísticas
             if len(volumes_encontrados) == 0:
@@ -620,6 +671,121 @@ class BuscaWindow(QMainWindow):
                 self,
                 "Erro na Busca",
                 f"Erro ao buscar volumes:\n{str(e)}"
+            )
+    
+    def ver_detalhes_volume(self, volume_id):
+        """Exibe os detalhes de um volume"""
+        QMessageBox.information(self, "Detalhes do Volume", f"Detalhes do volume ID: {volume_id}")
+        
+    def iniciar_conferencia_manifesto(self, manifesto_id):
+        """Inicia a conferência de um manifesto diretamente da busca"""
+        try:
+            from ui.conferencia_window import ConferenciaWindow
+            
+            # Verificar se já existe uma janela de conferência aberta para este manifesto
+            if manifesto_id in self.conferencia_windows:
+                janela_existente = self.conferencia_windows[manifesto_id]
+                if janela_existente.isVisible():
+                    janela_existente.raise_()
+                    janela_existente.activateWindow()
+                    return
+                else:
+                    # Janela foi fechada, remover do dicionário
+                    del self.conferencia_windows[manifesto_id]
+            
+            # Se não houver, criar uma nova janela
+            try:
+                nova_janela = ConferenciaWindow(manifesto_id=manifesto_id, parent=self)
+                self.conferencia_windows[manifesto_id] = nova_janela
+                nova_janela.show()
+                nova_janela.raise_()
+                nova_janela.activateWindow()
+                
+                # Conectar sinal para remover do dicionário quando fechar
+                nova_janela.destroyed.connect(lambda: self.remover_janela_conferencia(manifesto_id))
+                
+            except Exception as e:
+                print(f"Erro ao abrir janela de conferência: {str(e)}")
+                import traceback
+                print(f"Traceback: {traceback.format_exc()}")
+                QMessageBox.critical(
+                    self,
+                    "Erro",
+                    f"Não foi possível abrir a conferência:\n{str(e)}"
+                )
+        except Exception as e:
+            print(f"Erro ao iniciar conferência: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            QMessageBox.critical(
+                self,
+                "Erro",
+                f"Ocorreu um erro inesperado ao iniciar a conferência:\n{str(e)}"
+            )
+    
+    def remover_janela_conferencia(self, manifesto_id):
+        """Remove a janela de conferência do dicionário quando fechada"""
+        if manifesto_id in self.conferencia_windows:
+            del self.conferencia_windows[manifesto_id]
+    
+    def receber_volume_direto(self, volume_id, manifesto_id, quantidade_expedida):
+        """Recebe um volume diretamente da busca, sem abrir a janela de conferência"""
+        try:
+            from PyQt5.QtWidgets import QInputDialog, QMessageBox, QDialog
+            from src.ui.conferencia_window import VolumeMultiploDialog
+            from src.database import obter_volume, obter_caixas, marcar_caixa_recebida, marcar_volume_recebido
+            
+            # Verificar se o volume tem mais de uma caixa
+            caixas = obter_caixas(volume_id)
+            
+            if quantidade_expedida > 1 and len(caixas) > 0:
+                # Se tiver caixas individuais cadastradas, abrir diálogo para seleção
+                volume = obter_volume(volume_id)
+                if volume is None:
+                    QMessageBox.critical(
+                        self,
+                        "Erro",
+                        f"Volume {volume_id} não encontrado!"
+                    )
+                    return
+                    
+                # Abrir diálogo para seleção de caixas
+                dialog = VolumeMultiploDialog(volume, caixas, self, "Sistema")
+                if dialog.exec_() == QDialog.Accepted:
+                    QMessageBox.information(
+                        self,
+                        "Sucesso",
+                        f"{dialog.quantidade_marcada} caixa(s) marcada(s) como recebida(s) com sucesso!"
+                    )
+            else:
+                # Se for apenas uma caixa, confirmar recebimento
+                reply = QMessageBox.question(
+                    self, 
+                    'Confirmar Recebimento',
+                    f'Deseja confirmar o recebimento do volume {volume_id}?',
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+                
+                if reply == QMessageBox.Yes:
+                    marcar_volume_recebido(volume_id, 1, "Sistema")
+                    QMessageBox.information(
+                        self, 
+                        "Sucesso", 
+                        f"Volume {volume_id} recebido com sucesso!"
+                    )
+            
+            # Atualizar a tabela de volumes
+            self.buscar_volumes()
+            
+        except Exception as e:
+            print(f"Erro ao receber volume: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
+            QMessageBox.critical(
+                self,
+                "Erro",
+                f"Ocorreu um erro ao processar o recebimento:\n{str(e)}"
             )
     
     def ver_detalhes_manifesto(self, manifesto_id: int):

@@ -415,6 +415,18 @@ def listar_volumes(manifesto_id: int) -> List[Dict]:
         conn.close()
 
 @execute_with_retry
+def obter_volume(volume_id: int) -> Optional[Dict]:
+    """Obtém detalhes de um volume específico"""
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM volumes WHERE id = ?", (volume_id,))
+        volume = cursor.fetchone()
+        return dict(volume) if volume else None
+    finally:
+        conn.close()
+
+@execute_with_retry
 def obter_caixas(volume_id: int) -> List[Dict]:
     """Obtém todas as caixas individuais de um volume"""
     conn = get_connection()
@@ -510,7 +522,7 @@ def marcar_volume_recebido(volume_id: int, quantidade: int = None, usuario: str 
 
 @execute_with_retry
 def registrar_log(manifesto_id: int, acao: str, detalhes: str = None, usuario: str = "Sistema"):
-    """Registra uma ação no log"""
+    """Registras uma ação no log"""
     conn = get_connection()
     try:
         cursor = conn.cursor()

@@ -283,7 +283,7 @@ class MainWindow(QMainWindow):
         
         for i, manifesto in enumerate(manifestos):
             # Aumentar altura da linha - DENTRO DO LOOP
-            self.tabela.setRowHeight(i, 65)
+            self.tabela.setRowHeight(i, 80)
             
             # Nº Manifesto - CENTRALIZADO
             item_manifesto = QTableWidgetItem(manifesto['numero_manifesto'] or "N/A")
