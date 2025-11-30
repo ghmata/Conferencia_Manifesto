@@ -127,6 +127,8 @@ class MainWindow(QMainWindow):
         
         layout.addLayout(header_layout)
         
+        # No método init_ui, na configuração da tabela, altere:
+
         # Tabela de manifestos
         self.tabela = QTableWidget()
         self.tabela.setColumnCount(6)
@@ -148,7 +150,9 @@ class MainWindow(QMainWindow):
         self.tabela.setColumnWidth(0, 180)  # Nº Manifesto - MAIS LARGO
         self.tabela.setColumnWidth(3, 140)  # Status - REDUZIDO
         
-        self.tabela.setSelectionBehavior(QTableWidget.SelectRows)
+        # Permitir seleção de texto nas células
+        self.tabela.setSelectionBehavior(QTableWidget.SelectItems)
+        self.tabela.setSelectionMode(QTableWidget.ContiguousSelection)
         self.tabela.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabela.setAlternatingRowColors(True)
         
@@ -163,6 +167,7 @@ class MainWindow(QMainWindow):
             }
             QTableWidget::item {
                 padding: 8px;
+                selection-background-color: #b3d9ff;
             }
             QHeaderView::section {
                 background-color: #f5f5f5;

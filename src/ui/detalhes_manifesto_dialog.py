@@ -84,12 +84,14 @@ class DetalhesManifestoDialog(QDialog):
         
         lbl_numero = QLabel(f"<b>Nº:</b> {self.manifesto['numero_manifesto']}")
         lbl_numero.setStyleSheet("font-size: 14px;")
+        lbl_numero.setTextInteractionFlags(Qt.TextSelectableByMouse)
         linha1.addWidget(lbl_numero)
         
         linha1.addStretch()
         
         lbl_data = QLabel(f"<b>Data:</b> {self.manifesto['data_manifesto']}")
         lbl_data.setStyleSheet("font-size: 14px;")
+        lbl_data.setTextInteractionFlags(Qt.TextSelectableByMouse)
         linha1.addWidget(lbl_data)
         
         group_layout.addLayout(linha1)
@@ -101,6 +103,7 @@ class DetalhesManifestoDialog(QDialog):
             f"<b>Rota:</b> {self.manifesto['terminal_origem']} → "
             f"{self.manifesto['terminal_destino']}"
         )
+        lbl_rota.setTextInteractionFlags(Qt.TextSelectableByMouse)
         linha2.addWidget(lbl_rota)
         
         linha2.addStretch()
@@ -117,6 +120,7 @@ class DetalhesManifestoDialog(QDialog):
             
         if texto_missao:
             lbl_missao = QLabel(" | ".join(texto_missao))
+            lbl_missao.setTextInteractionFlags(Qt.TextSelectableByMouse)
             linha2.addWidget(lbl_missao)
         
         group_layout.addLayout(linha2)
@@ -133,6 +137,7 @@ class DetalhesManifestoDialog(QDialog):
         
         lbl_status = QLabel(f"<b>Status:</b> {self._formatar_status(status)}")
         lbl_status.setStyleSheet(f"color: {cor_status}; font-size: 14px; font-weight: bold;")
+        lbl_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         linha3.addWidget(lbl_status)
         
         linha3.addStretch()
@@ -140,6 +145,7 @@ class DetalhesManifestoDialog(QDialog):
         if self.manifesto['data_conferencia_inicio']:
             tempo = self._calcular_tempo_conferencia()
             lbl_tempo = QLabel(f"<b>Tempo de conferência:</b> {tempo}")
+            lbl_tempo.setTextInteractionFlags(Qt.TextSelectableByMouse)
             linha3.addWidget(lbl_tempo)
         
         group_layout.addLayout(linha3)
@@ -171,19 +177,40 @@ class DetalhesManifestoDialog(QDialog):
         header.setSectionResizeMode(7, QHeaderView.Interactive)  # Recebido em
         header.setSectionResizeMode(8, QHeaderView.Interactive)  # Recebido por - nova coluna
         
-        # Definir larguras iniciais
+        # Definir larguras iniciais - AJUSTES AQUI
         self.tabela_volumes.setColumnWidth(0, 70)   # Status
-        self.tabela_volumes.setColumnWidth(1, 170)  # Remetente (reduzida em 15px)
-        self.tabela_volumes.setColumnWidth(2, 180)  # Destinatário
+        self.tabela_volumes.setColumnWidth(1, 140)  # Remetente (REDUZIDA: 170 - 15 = 155px)
+        self.tabela_volumes.setColumnWidth(2, 100)  # Destinatário
         self.tabela_volumes.setColumnWidth(3, 150)  # N° Volume
         self.tabela_volumes.setColumnWidth(4, 80)   # Caixas
-        self.tabela_volumes.setColumnWidth(5, 90)   # Peso
+        self.tabela_volumes.setColumnWidth(5, 100)  # Peso (AUMENTADA: 90 + 10 = 100px)
         self.tabela_volumes.setColumnWidth(6, 90)   # Cubagem
         self.tabela_volumes.setColumnWidth(7, 120)  # Recebido em
-        self.tabela_volumes.setColumnWidth(8, 120)  # Recebido por
+        self.tabela_volumes.setColumnWidth(8, 150)  # Recebido por
         
-        self.tabela_volumes.setAlternatingRowColors(True)
+        # Permitir seleção de texto nas células
+        self.tabela_volumes.setSelectionBehavior(QTableWidget.SelectItems)
+        self.tabela_volumes.setSelectionMode(QTableWidget.ContiguousSelection)
         self.tabela_volumes.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabela_volumes.setAlternatingRowColors(True)
+        
+        self.tabela_volumes.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                background-color: white;
+            }
+            QTableWidget::item {
+                padding: 8px;
+                selection-background-color: #b3d9ff;
+            }
+            QHeaderView::section {
+                background-color: #f5f5f5;
+                padding: 10px;
+                border: none;
+                font-weight: bold;
+            }
+        """)
         
         # Conectar o clique na tabela
         self.tabela_volumes.cellClicked.connect(self.on_volume_clicked)
@@ -202,6 +229,7 @@ class DetalhesManifestoDialog(QDialog):
             font-size: 13px;
         """)
         self.lbl_estatisticas.setAlignment(Qt.AlignTop)
+        self.lbl_estatisticas.setTextInteractionFlags(Qt.TextSelectableByMouse)
         
         layout.addWidget(self.lbl_estatisticas)
         
@@ -215,6 +243,8 @@ class DetalhesManifestoDialog(QDialog):
             font-family: 'Courier New', monospace;
             font-size: 11px;
         """)
+        # Permitir seleção e cópia
+        self.txt_logs.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         
         layout.addWidget(self.txt_logs)
         

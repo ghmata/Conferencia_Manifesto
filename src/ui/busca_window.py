@@ -148,6 +148,8 @@ class BuscaWindow(QMainWindow):
         
         layout.addLayout(btn_layout)
         
+        # No método criar_tab_manifestos, modifique a configuração da tabela:
+
         # Tabela de resultados
         self.tabela_manifestos = QTableWidget()
         self.tabela_manifestos.setColumnCount(7)
@@ -161,7 +163,9 @@ class BuscaWindow(QMainWindow):
         if header is not None:
             header.setSectionResizeMode(QHeaderView.Stretch)
         
-        self.tabela_manifestos.setSelectionBehavior(QTableWidget.SelectRows)
+        # Permitir seleção de texto nas células
+        self.tabela_manifestos.setSelectionBehavior(QTableWidget.SelectItems)
+        self.tabela_manifestos.setSelectionMode(QTableWidget.ContiguousSelection)
         self.tabela_manifestos.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabela_manifestos.setAlternatingRowColors(True)
         
@@ -173,6 +177,46 @@ class BuscaWindow(QMainWindow):
             }
             QTableWidget::item {
                 padding: 8px;
+                selection-background-color: #b3d9ff;
+            }
+            QHeaderView::section {
+                background-color: #f5f5f5;
+                padding: 10px;
+                border: none;
+                font-weight: bold;
+            }
+        """)
+
+# No método criar_tab_volumes, modifique a configuração da tabela:
+
+        # Tabela de resultados
+        self.tabela_volumes = QTableWidget()
+        self.tabela_volumes.setColumnCount(8)
+        self.tabela_volumes.setHorizontalHeaderLabels([
+            "Nº Volume", "Remetente", "Destinatário", "Nº Manifesto",
+            "Data", "Status Volume", "Caixas", "Ações"
+        ])
+        
+        # Configurar header
+        header = self.tabela_volumes.horizontalHeader()
+        if header is not None:
+            header.setSectionResizeMode(QHeaderView.Stretch)
+        
+        # Permitir seleção de texto nas células
+        self.tabela_volumes.setSelectionBehavior(QTableWidget.SelectItems)
+        self.tabela_volumes.setSelectionMode(QTableWidget.ContiguousSelection)
+        self.tabela_volumes.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tabela_volumes.setAlternatingRowColors(True)
+        
+        self.tabela_volumes.setStyleSheet("""
+            QTableWidget {
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                background-color: white;
+            }
+            QTableWidget::item {
+                padding: 8px;
+                selection-background-color: #b3d9ff;
             }
             QHeaderView::section {
                 background-color: #f5f5f5;
@@ -228,6 +272,8 @@ class BuscaWindow(QMainWindow):
         btn_buscar_manual.clicked.connect(self.buscar_volumes)
         layout.addWidget(btn_buscar_manual)
         
+        # No método criar_tab_volumes, modifique a configuração da tabela:
+
         # Tabela de resultados
         self.tabela_volumes = QTableWidget()
         self.tabela_volumes.setColumnCount(8)
@@ -241,7 +287,9 @@ class BuscaWindow(QMainWindow):
         if header is not None:
             header.setSectionResizeMode(QHeaderView.Stretch)
         
-        self.tabela_volumes.setSelectionBehavior(QTableWidget.SelectRows)
+        # Permitir seleção de texto nas células
+        self.tabela_volumes.setSelectionBehavior(QTableWidget.SelectItems)
+        self.tabela_volumes.setSelectionMode(QTableWidget.ContiguousSelection)
         self.tabela_volumes.setEditTriggers(QTableWidget.NoEditTriggers)
         self.tabela_volumes.setAlternatingRowColors(True)
         
@@ -253,6 +301,7 @@ class BuscaWindow(QMainWindow):
             }
             QTableWidget::item {
                 padding: 8px;
+                selection-background-color: #b3d9ff;
             }
             QHeaderView::section {
                 background-color: #f5f5f5;
@@ -408,7 +457,7 @@ class BuscaWindow(QMainWindow):
             self.tabela_manifestos.setItem(i, 5, item_caixas)
             
             # Botão Ver Detalhes
-            btn_detalhes = QPushButton("👁️ Ver")
+            btn_detalhes = QPushButton("Detalhes")
             btn_detalhes.setStyleSheet("""
                 QPushButton {
                     background-color: #2196F3;
