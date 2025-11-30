@@ -6,7 +6,7 @@ Arquivo: src/ui/detalhes_manifesto_dialog.py
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QPushButton, QTableWidget, QTableWidgetItem,
                              QGroupBox, QHeaderView, QTextEdit, QTabWidget,
-                             QWidget, QMessageBox, QFileDialog)
+                             QWidget, QMessageBox, QFileDialog, QToolTip)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QColor
 from datetime import datetime
@@ -23,6 +23,7 @@ class DetalhesManifestoDialog(QDialog):
         super().__init__(parent)
         self.manifesto_id = manifesto_id
         self.manifesto = obter_manifesto(manifesto_id)
+        self.volume_ids = []  # Para armazenar os IDs dos volumes na ordem da tabela
         self.init_ui()
         self.carregar_dados()
         
@@ -30,7 +31,7 @@ class DetalhesManifestoDialog(QDialog):
         """Inicializa a interface"""
         self.setWindowTitle("Detalhes do Manifesto")
         self.setModal(True)
-        self.setMinimumSize(900, 600)
+        self.setMinimumSize(1000, 600)  # Aumentado para acomodar nova coluna
         
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
@@ -104,11 +105,19 @@ class DetalhesManifestoDialog(QDialog):
         
         linha2.addStretch()
         
-        lbl_missao = QLabel(
-            f"<b>Missão:</b> {self.manifesto.get('missao', 'N/A')} | "
-            f"<b>Aeronave:</b> {self.manifesto.get('aeronave', 'N/A')}"
-        )
-        linha2.addWidget(lbl_missao)
+        # Ajuste para não mostrar Missão e Aeronave quando forem None
+        missao = self.manifesto.get('missao')
+        aeronave = self.manifesto.get('aeronave')
+        texto_missao = []
+        
+        if missao and missao != 'None':
+            texto_missao.append(f"<b>Missão:</b> {missao}")
+        if aeronave and aeronave != 'None':
+            texto_missao.append(f"<b>Aeronave:</b> {aeronave}")
+            
+        if texto_missao:
+            lbl_missao = QLabel(" | ".join(texto_missao))
+            linha2.addWidget(lbl_missao)
         
         group_layout.addLayout(linha2)
         
@@ -144,15 +153,40 @@ class DetalhesManifestoDialog(QDialog):
         
         # Tabela
         self.tabela_volumes = QTableWidget()
-        self.tabela_volumes.setColumnCount(8)
+        self.tabela_volumes.setColumnCount(9)  # Aumentado para 9 colunas
         self.tabela_volumes.setHorizontalHeaderLabels([
             "Status", "Remetente", "Destinatário", "N° Volume",
-            "Caixas", "Peso", "Cubagem", "Recebido em"
+            "Caixas", "Peso", "Cubagem", "Recebido em", "Recebido por"
         ])
         
-        self.tabela_volumes.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # Configurar larguras das colunas
+        header = self.tabela_volumes.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Status - reduzida
+        header.setSectionResizeMode(1, QHeaderView.Interactive)  # Remetente - reduzida
+        header.setSectionResizeMode(2, QHeaderView.Interactive)  # Destinatário - reduzida
+        header.setSectionResizeMode(3, QHeaderView.Interactive)  # N° Volume - reduzida
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Caixas - reduzida
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Peso - aumentada
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Cubagem - aumentada
+        header.setSectionResizeMode(7, QHeaderView.Interactive)  # Recebido em
+        header.setSectionResizeMode(8, QHeaderView.Interactive)  # Recebido por - nova coluna
+        
+        # Definir larguras iniciais
+        self.tabela_volumes.setColumnWidth(0, 70)   # Status
+        self.tabela_volumes.setColumnWidth(1, 170)  # Remetente (reduzida em 15px)
+        self.tabela_volumes.setColumnWidth(2, 180)  # Destinatário
+        self.tabela_volumes.setColumnWidth(3, 150)  # N° Volume
+        self.tabela_volumes.setColumnWidth(4, 80)   # Caixas
+        self.tabela_volumes.setColumnWidth(5, 90)   # Peso
+        self.tabela_volumes.setColumnWidth(6, 90)   # Cubagem
+        self.tabela_volumes.setColumnWidth(7, 120)  # Recebido em
+        self.tabela_volumes.setColumnWidth(8, 120)  # Recebido por
+        
         self.tabela_volumes.setAlternatingRowColors(True)
         self.tabela_volumes.setEditTriggers(QTableWidget.NoEditTriggers)
+        
+        # Conectar o clique na tabela
+        self.tabela_volumes.cellClicked.connect(self.on_volume_clicked)
         
         layout.addWidget(self.tabela_volumes)
         
@@ -193,10 +227,14 @@ class DetalhesManifestoDialog(QDialog):
     def carregar_volumes(self):
         """Carrega a lista de volumes"""
         volumes = listar_volumes(self.manifesto_id)
+        self.volume_ids = []  # Resetar a lista de IDs
         
         self.tabela_volumes.setRowCount(len(volumes))
         
         for i, volume in enumerate(volumes):
+            # Armazenar o ID do volume para referência
+            self.volume_ids.append(volume['id'])
+            
             # Status
             status = volume['status']
             emoji = {
@@ -224,63 +262,111 @@ class DetalhesManifestoDialog(QDialog):
             
             # Remetente
             item_remetente = QTableWidgetItem(volume['remetente'])
+            item_remetente.setTextAlignment(Qt.AlignCenter)
             item_remetente.setBackground(cor)
             self.tabela_volumes.setItem(i, 1, item_remetente)
             
             # Destinatário
             item_destinatario = QTableWidgetItem(volume['destinatario'])
+            item_destinatario.setTextAlignment(Qt.AlignCenter)
             item_destinatario.setBackground(cor)
             self.tabela_volumes.setItem(i, 2, item_destinatario)
             
-            # N° Volume (últimos dígitos)
+            # N° Volume (COMPLETO - sem truncar)
             num_vol = volume['numero_volume']
-            num_vol_curto = f"...{num_vol[-8:]}" if len(num_vol) > 8 else num_vol
-            item_vol = QTableWidgetItem(num_vol_curto)
-            item_vol.setToolTip(num_vol)  # Mostrar completo no hover
+            item_vol = QTableWidgetItem(num_vol)
+            item_vol.setTextAlignment(Qt.AlignCenter)
             item_vol.setBackground(cor)
             self.tabela_volumes.setItem(i, 3, item_vol)
             
-            # Caixas
+            # Caixas (sem os 3 pontos e sem indicador visual)
             caixas_texto = f"{volume['quantidade_recebida']}/{volume['quantidade_expedida']}"
-            
-            # Adicionar indicador visual
-            if volume['quantidade_expedida'] > 1:
-                caixas = obter_caixas(volume['id'])
-                indicador = ""
-                for caixa in caixas:
-                    indicador += "✓" if caixa['status'] == 'RECEBIDA' else "✗"
-                caixas_texto += f"\n{indicador}"
             
             item_caixas = QTableWidgetItem(caixas_texto)
             item_caixas.setTextAlignment(Qt.AlignCenter)
             item_caixas.setBackground(cor)
+            
+            # Adicionar tooltip para mostrar números das caixas quando houver mais de uma
+            if volume['quantidade_expedida'] > 1:
+                caixas = obter_caixas(volume['id'])
+                if caixas:
+                    # CORREÇÃO: Converter números para string antes do join
+                    caixas_recebidas = [str(c['numero_caixa']) for c in caixas if c.get('status') == 'RECEBIDA']
+                    if caixas_recebidas:
+                        tooltip_text = f"Caixas recebidas: {', '.join(caixas_recebidas)}"
+                        item_caixas.setToolTip(tooltip_text)
+            
             self.tabela_volumes.setItem(i, 4, item_caixas)
             
             # Peso
             peso = f"{volume['peso_total']} kg" if volume['peso_total'] else "N/A"
             item_peso = QTableWidgetItem(peso)
-            item_peso.setTextAlignment(Qt.AlignRight)
+            item_peso.setTextAlignment(Qt.AlignCenter)
             item_peso.setBackground(cor)
             self.tabela_volumes.setItem(i, 5, item_peso)
             
             # Cubagem
             cubagem = f"{volume['cubagem']} m³" if volume['cubagem'] else "N/A"
             item_cubagem = QTableWidgetItem(cubagem)
-            item_cubagem.setTextAlignment(Qt.AlignRight)
+            item_cubagem.setTextAlignment(Qt.AlignCenter)
             item_cubagem.setBackground(cor)
             self.tabela_volumes.setItem(i, 6, item_cubagem)
             
-            # Recebido em
+            # Recebido em - formato dd/mm/aa
             if volume['data_hora_primeira_recepcao']:
-                data_rec = volume['data_hora_primeira_recepcao'][:16]
-                if volume['data_hora_ultima_recepcao'] != volume['data_hora_primeira_recepcao']:
-                    data_rec += f"\n(última: {volume['data_hora_ultima_recepcao'][:16]})"
+                try:
+                    data_obj = datetime.fromisoformat(volume['data_hora_primeira_recepcao'].replace('Z', '+00:00'))
+                    data_rec = data_obj.strftime('%d/%m/%y')
+                    
+                    if volume['data_hora_ultima_recepcao'] != volume['data_hora_primeira_recepcao']:
+                        data_ultima = datetime.fromisoformat(volume['data_hora_ultima_recepcao'].replace('Z', '+00:00'))
+                        data_rec += f"\n(última: {data_ultima.strftime('%d/%m/%y')})"
+                except:
+                    data_rec = volume['data_hora_primeira_recepcao'][:10]
             else:
                 data_rec = "Não recebido"
             
             item_recebido = QTableWidgetItem(data_rec)
+            item_recebido.setTextAlignment(Qt.AlignCenter)
             item_recebido.setBackground(cor)
             self.tabela_volumes.setItem(i, 7, item_recebido)
+            
+            # Recebido por - Nova coluna
+            recebido_por = volume.get('usuario_recepcao', 'N/A')
+            item_recebido_por = QTableWidgetItem(recebido_por)
+            item_recebido_por.setTextAlignment(Qt.AlignCenter)
+            item_recebido_por.setBackground(cor)
+            self.tabela_volumes.setItem(i, 8, item_recebido_por)
+        
+    def on_volume_clicked(self, row, column):
+        """Trata o clique em uma linha da tabela de volumes"""
+        if row < 0 or row >= len(self.volume_ids):
+            return
+            
+        volume_id = self.volume_ids[row]
+        volume = listar_volumes(self.manifesto_id)[row]
+        
+        # Verificar se o volume tem mais de uma caixa
+        if volume['quantidade_expedida'] > 1:
+            caixas = obter_caixas(volume_id)
+            if caixas:
+                # CORREÇÃO: Converter números para string antes do join
+                caixas_recebidas = [str(c['numero_caixa']) for c in caixas if c.get('status') == 'RECEBIDA']
+                caixas_faltantes = [str(c['numero_caixa']) for c in caixas if c.get('status') != 'RECEBIDA']
+                
+                mensagem = f"Volume: {volume['numero_volume']}\n\n"
+                
+                if caixas_recebidas:
+                    mensagem += f"✅ Caixas recebidas ({len(caixas_recebidas)}):\n{', '.join(caixas_recebidas)}\n\n"
+                else:
+                    mensagem += "❌ Nenhuma caixa recebida\n\n"
+                    
+                if caixas_faltantes:
+                    mensagem += f"❌ Caixas faltantes ({len(caixas_faltantes)}):\n{', '.join(caixas_faltantes)}"
+                else:
+                    mensagem += "✅ Todas as caixas recebidas"
+                
+                QMessageBox.information(self, "Detalhes das Caixas", mensagem)
         
     def carregar_estatisticas(self):
         """Carrega as estatísticas do manifesto"""
@@ -386,7 +472,7 @@ class DetalhesManifestoDialog(QDialog):
                 writer.writerow([
                     'Status', 'Remetente', 'Destinatário', 'N° Volume',
                     'Qtd Expedida', 'Qtd Recebida', 'Peso (kg)', 'Cubagem (m³)',
-                    'Prioridade', 'Data Recebimento'
+                    'Prioridade', 'Data Recebimento', 'Recebido por'  # Adicionado Recebido por
                 ])
                 
                 # Dados dos volumes
@@ -401,7 +487,8 @@ class DetalhesManifestoDialog(QDialog):
                         volume['peso_total'] or '',
                         volume['cubagem'] or '',
                         volume['prioridade'] or '',
-                        volume['data_hora_primeira_recepcao'] or ''
+                        volume['data_hora_primeira_recepcao'] or '',
+                        volume.get('usuario_recepcao', '')  # Adicionado Recebido por
                     ])
             
             QMessageBox.information(

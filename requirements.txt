@@ -1,4 +1,4 @@
-# Sistema de Conferência de Manifestos - CAN
+git remote remove origin# Sistema de Conferência de Manifestos - CAN
 # Requirements.txt - ATUALIZADO
 
 # Interface Gráfica (CRÍTICO)
