@@ -68,6 +68,7 @@ def init_database():
                 status TEXT CHECK(status IN ('COMPLETO', 'PARCIAL', 'NÃO RECEBIDO', 'VOLUME EXTRA')) DEFAULT 'NÃO RECEBIDO',
                 data_hora_primeira_recepcao DATETIME,
                 data_hora_ultima_recepcao DATETIME,
+                usuario_recepcao TEXT,  -- NOVA COLUNA: armazena quem recebeu o volume
                 FOREIGN KEY (manifesto_id) REFERENCES manifestos(id),
                 UNIQUE(manifesto_id, numero_volume)
             )
@@ -102,6 +103,31 @@ def init_database():
         
         conn.commit()
         conn.close()
+        
+    # Adicionar coluna usuario_recepcao se não existir
+    migrar_schema()
+
+def migrar_schema():
+    """Adiciona a coluna usuario_recepcao se ela não existir na tabela volumes"""
+    with _db_lock:
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Verificar se a coluna usuario_recepcao existe
+            cursor.execute("PRAGMA table_info(volumes)")
+            colunas = [coluna[1] for coluna in cursor.fetchall()]
+            
+            if 'usuario_recepcao' not in colunas:
+                print("Adicionando coluna usuario_recepcao à tabela volumes...")
+                cursor.execute("ALTER TABLE volumes ADD COLUMN usuario_recepcao TEXT")
+                conn.commit()
+                print("Coluna usuario_recepcao adicionada com sucesso!")
+            
+        except Exception as e:
+            print(f"Erro na migração do schema: {e}")
+        finally:
+            conn.close()
 
 def get_connection():
     """
@@ -427,9 +453,10 @@ def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sis
                 SELECT COUNT(*) FROM caixas_individuais
                 WHERE volume_id = ? AND status = 'RECEBIDA'
             ),
-            data_hora_ultima_recepcao = ?
+            data_hora_ultima_recepcao = ?,
+            usuario_recepcao = ?  -- Atualiza quem recebeu
             WHERE id = ?
-        """, (volume_id, agora, volume_id))
+        """, (volume_id, agora, usuario, volume_id))
         
         # Atualizar primeira recepção se for a primeira
         cursor.execute("""

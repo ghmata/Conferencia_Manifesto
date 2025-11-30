@@ -31,6 +31,7 @@ class ConferenciaWindow(QMainWindow):
         self.manifesto = obter_manifesto(manifesto_id)
         self.conferencia_ativa = False
         self.volume_encontrado = None  # Armazena volume para confirmação
+        self.usuario_conferente = ""  # Armazena nome do usuário
         self.init_ui()
         self.carregar_manifesto()
         
@@ -431,12 +432,12 @@ Status Atual:
                     "Esta caixa já foi recebida anteriormente!"
                 )
             else:
-                marcar_caixa_recebida(volume['id'], 1, "Usuário")
+                marcar_caixa_recebida(volume['id'], 1, self.usuario_conferente)
                 self.mostrar_sucesso_recebimento(volume, 1, 1)
                 self.atualizar_resumo()
         else:
             # Volume múltiplo - abrir diálogo de seleção
-            dialog = VolumeMultiploDialog(volume, caixas, self)
+            dialog = VolumeMultiploDialog(volume, caixas, self, self.usuario_conferente)
             if dialog.exec_() == QDialog.Accepted:
                 self.atualizar_resumo()
                 self.mostrar_sucesso_recebimento(volume, dialog.quantidade_marcada, volume['quantidade_expedida'])
@@ -460,6 +461,7 @@ Remetente: {volume['remetente']} → Destinatário: {volume['destinatario']}
 
 Recebido agora: {recebidas} de {total} caixa(s)
 Horário: {datetime.now().strftime('%H:%M:%S')}
+Recebido por: {self.usuario_conferente}
 
 ✅ Registrado no sistema!
 """
@@ -530,38 +532,11 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
         
     def iniciar_conferencia_handler(self):
         """Inicia a conferência"""
-        reply = QMessageBox.question(
-            self,
-            "Iniciar Conferência",
-            f"Deseja iniciar a conferência do manifesto {self.manifesto['numero_manifesto']}?",
-            QMessageBox.Yes | QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            iniciar_conferencia(self.manifesto_id, "Usuário")
-            self.conferencia_ativa = True
-            self.btn_iniciar.setEnabled(False)
-            self.btn_finalizar.setEnabled(True)
-            self.txt_remetente.setFocus()
-            
-            QMessageBox.information(
-                self,
-                "Conferência Iniciada",
-                "Conferência iniciada! Comece a conferir os volumes."
-            )
-            
-    def finalizar_conferencia_handler(self):
-        """Finaliza a conferência solicitando nome do conferente"""
-        stats = obter_estatisticas_manifesto(self.manifesto_id)
-        
-        exp = stats['total_caixas_expedidas'] or 0
-        rec = stats['total_caixas_recebidas'] or 0
-        
         # Solicitar nome do conferente
         nome, ok = QInputDialog.getText(
             self,
-            "Finalizar Conferência",
-            "Digite o nome de quem recebeu o manifesto:",
+            "Nome do Conferente",
+            "Digite o nome de quem vai conferir:",
             QLineEdit.Normal,
             ""
         )
@@ -570,9 +545,37 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
             QMessageBox.warning(
                 self,
                 "Nome Obrigatório",
-                "É necessário informar o nome do responsável pela conferência!"
+                "É necessário informar o nome do conferente!"
             )
             return
+            
+        reply = QMessageBox.question(
+            self,
+            "Iniciar Conferência",
+            f"Deseja iniciar a conferência do manifesto {self.manifesto['numero_manifesto']}?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            self.usuario_conferente = nome.strip()
+            iniciar_conferencia(self.manifesto_id, self.usuario_conferente)
+            self.conferencia_ativa = True
+            self.btn_iniciar.setEnabled(False)
+            self.btn_finalizar.setEnabled(True)
+            self.txt_remetente.setFocus()
+            
+            QMessageBox.information(
+                self,
+                "Conferência Iniciada",
+                f"Conferência iniciada por {self.usuario_conferente}! Comece a conferir os volumes."
+            )
+            
+    def finalizar_conferencia_handler(self):
+        """Finaliza a conferência solicitando nome do conferente"""
+        stats = obter_estatisticas_manifesto(self.manifesto_id)
+        
+        exp = stats['total_caixas_expedidas'] or 0
+        rec = stats['total_caixas_recebidas'] or 0
         
         if rec < exp:
             # Conferência incompleta
@@ -596,8 +599,8 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
         registrar_log(
             self.manifesto_id,
             "CONFERÊNCIA FINALIZADA",
-            f"Recebido por: {nome.strip()}",
-            nome.strip()
+            f"Recebido por: {self.usuario_conferente}",
+            self.usuario_conferente
         )
         
         self.conferencia_finalizada.emit()
@@ -607,7 +610,7 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
             "✅ Conferência Finalizada",
             f"Conferência finalizada com sucesso!\n\n"
             f"Recebidas: {rec}/{exp} caixas ({stats['percentual_recebido']:.1f}%)\n"
-            f"Responsável: {nome.strip()}"
+            f"Responsável: {self.usuario_conferente}"
         )
         
         self.close()
@@ -616,10 +619,11 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
 class VolumeMultiploDialog(QDialog):
     """Diálogo para selecionar caixas específicas de um volume"""
     
-    def __init__(self, volume: dict, caixas: list, parent=None):
+    def __init__(self, volume: dict, caixas: list, parent=None, usuario: str = "Sistema"):
         super().__init__(parent)
         self.volume = volume
         self.caixas = caixas
+        self.usuario = usuario
         self.quantidade_marcada = 0
         self.init_ui()
         
@@ -709,7 +713,7 @@ class VolumeMultiploDialog(QDialog):
         
         # Marcar caixas como recebidas
         for caixa in selecionadas:
-            marcar_caixa_recebida(self.volume['id'], caixa['numero_caixa'], "Usuário")
+            marcar_caixa_recebida(self.volume['id'], caixa['numero_caixa'], self.usuario)
         
         self.quantidade_marcada = len(selecionadas)
         self.accept()

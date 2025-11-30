@@ -571,13 +571,6 @@ class MainWindow(QMainWindow):
         
         if reply == QMessageBox.Yes:
             try:
-                volumes = listar_volumes(manifesto_id)
-                
-                for volume in volumes:
-                    marcar_volume_recebido(volume['id'], volume['quantidade_expedida'], "Sistema")
-                
-                from database import finalizar_conferencia, registrar_log
-                
                 # Solicitar nome
                 nome, ok = QInputDialog.getText(
                     self,
@@ -587,21 +580,35 @@ class MainWindow(QMainWindow):
                     ""
                 )
                 
-                if ok and nome.strip():
-                    finalizar_conferencia(manifesto_id)
-                    registrar_log(
-                        manifesto_id,
-                        "RECEBIMENTO TOTAL",
-                        f"Todos os volumes recebidos por: {nome.strip()}",
-                        nome.strip()
+                if not ok or not nome.strip():
+                    QMessageBox.warning(
+                        self,
+                        "Nome Obrigatório",
+                        "É necessário informar o nome do responsável pelo recebimento!"
                     )
+                    return
+                
+                volumes = listar_volumes(manifesto_id)
+                
+                for volume in volumes:
+                    marcar_volume_recebido(volume['id'], volume['quantidade_expedida'], nome.strip())
+                
+                from database import finalizar_conferencia, registrar_log
+                
+                finalizar_conferencia(manifesto_id)
+                registrar_log(
+                    manifesto_id,
+                    "RECEBIMENTO TOTAL",
+                    f"Todos os volumes recebidos por: {nome.strip()}",
+                    nome.strip()
+                )
                 
                 self.atualizar_tabela()
                 
                 QMessageBox.information(
                     self,
                     "Sucesso",
-                    f"Todos os {len(volumes)} volumes foram marcados como recebidos!"
+                    f"Todos os {len(volumes)} volumes foram marcados como recebidos por {nome.strip()}!"
                 )
                 
             except Exception as e:
