@@ -42,7 +42,7 @@ class ConferenciaWindow(QMainWindow):
         self.setWindowTitle(f"Conferência - {self.manifesto['numero_manifesto']}")
         
         # Configuração para tela cheia - sem tamanho mínimo fixo
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1024, 768)
         
         # Widget central
         central_widget = QWidget()
@@ -75,7 +75,10 @@ class ConferenciaWindow(QMainWindow):
         main_layout.setColumnStretch(0, 1)  # Coluna controles
         main_layout.setColumnStretch(1, 1)  # Coluna estatísticas  
         main_layout.setColumnStretch(2, 2)  # Coluna resultados (MAIOR)
-        main_layout.setRowStretch(1, 3)     # Linha principal ALTAMENTE EXPANSÍVEL
+        
+        # Linhas: 0=Header, 1=Principal (Expande), 2=Progresso, 3=Rodapé
+        main_layout.setRowStretch(0, 0)     # Header fixo (adaptável)
+        main_layout.setRowStretch(1, 1)     # Linha principal EXPANSÍVEL
         main_layout.setRowStretch(2, 0)     # Barra progresso - fixa
         main_layout.setRowStretch(3, 0)     # Rodapé - fixo
         
@@ -90,11 +93,15 @@ class ConferenciaWindow(QMainWindow):
                 padding: 15px;
             }
         """)
-        header_frame.setFixedHeight(100)  # Altura fixa para header
+        # Removido setFixedHeight para evitar cortes em resoluções baixas ou fontes grandes
+        header_frame.setMinimumHeight(100) 
+        header_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        
         header_layout = QHBoxLayout(header_frame)
         
         # Informações do manifesto
         info_layout = QVBoxLayout()
+        info_layout.setSpacing(5)
         
         titulo = QLabel("CONFERÊNCIA DE MANIFESTO")
         titulo.setStyleSheet("""
@@ -103,6 +110,7 @@ class ConferenciaWindow(QMainWindow):
             font-weight: bold;
             margin-bottom: 5px;
         """)
+        titulo.setWordWrap(True) # Segurança contra corte
         info_layout.addWidget(titulo)
         
         detalhes = QLabel(
@@ -110,30 +118,35 @@ class ConferenciaWindow(QMainWindow):
             f"<b>Data:</b> {self.manifesto['data_manifesto']} | "
             f"<b>Destino:</b> {self.manifesto['terminal_destino']}"
         )
-        detalhes.setStyleSheet("color: white; font-size: 12px;")
+        detalhes.setStyleSheet("color: white; font-size: 13px;") # Fonte levemente aumentada
         detalhes.setTextFormat(Qt.RichText)
+        detalhes.setWordWrap(True) # Essencial para não cortar informações
         info_layout.addWidget(detalhes)
         
-        header_layout.addLayout(info_layout)
-        header_layout.addStretch()
+        header_layout.addLayout(info_layout, stretch=2)
+        header_layout.addStretch(1)
         
         # Status da conferência
         status_layout = QVBoxLayout()
+        status_layout.setSpacing(5)
+        
         self.lbl_status_conferencia = QLabel("CONFERÊNCIA NÃO INICIADA")
         self.lbl_status_conferencia.setStyleSheet("""
             color: white;
             font-size: 14px;
             font-weight: bold;
-            padding: 6px 15px;
+            padding: 8px 15px;
             background-color: rgba(255,255,255,0.2);
             border-radius: 15px;
         """)
         self.lbl_status_conferencia.setAlignment(Qt.AlignCenter)
+        self.lbl_status_conferencia.setWordWrap(True)
         status_layout.addWidget(self.lbl_status_conferencia)
         
         self.lbl_conferente = QLabel("Conferente: ---")
-        self.lbl_conferente.setStyleSheet("color: white; font-size: 11px;")
+        self.lbl_conferente.setStyleSheet("color: white; font-size: 12px;")
         self.lbl_conferente.setAlignment(Qt.AlignCenter)
+        self.lbl_conferente.setWordWrap(True)
         status_layout.addWidget(self.lbl_conferente)
         
         header_layout.addLayout(status_layout)
@@ -150,9 +163,10 @@ class ConferenciaWindow(QMainWindow):
         instrucao = QLabel(
             "Digite o <b>REMETENTE</b> e os <b>ÚLTIMOS DÍGITOS ANTES DA /</b> do n° do volume:"
         )
-        instrucao.setStyleSheet("font-size: 12px; color: #6c757d; margin-bottom: 10px;")
-        instrucao.setWordWrap(True)
-        instrucao.setFixedHeight(40)
+        instrucao.setStyleSheet("font-size: 12px; color: #6c757d; margin-bottom: 5px;")
+        instrucao.setWordWrap(True) # Ativado para evitar corte
+        # Removido setFixedHeight(40) para permitir expansão automática
+        instrucao.setMinimumHeight(40)
         controles_layout.addWidget(instrucao)
         
         # Campo Remetente
@@ -162,7 +176,7 @@ class ConferenciaWindow(QMainWindow):
         
         self.txt_remetente = QLineEdit()
         self.txt_remetente.setPlaceholderText("Ex: PAMASP, CABW, etc...")
-        self.txt_remetente.setFixedHeight(35)
+        self.txt_remetente.setMinimumHeight(35) # Alterado de fixed para minimum
         self.txt_remetente.textChanged.connect(self.atualizar_instrucao_digitos)
         self.txt_remetente.returnPressed.connect(self.focar_digitos)
         controles_layout.addWidget(self.txt_remetente)
@@ -171,6 +185,7 @@ class ConferenciaWindow(QMainWindow):
         lbl_digitos_layout = QHBoxLayout()
         self.lbl_digitos = QLabel("Últimos 4 dígitos (antes da /):")
         self.lbl_digitos.setStyleSheet("font-weight: bold; color: #495057; font-size: 12px;")
+        self.lbl_digitos.setWordWrap(True)
         lbl_digitos_layout.addWidget(self.lbl_digitos)
         
         lbl_digitos_layout.addStretch()
@@ -182,7 +197,7 @@ class ConferenciaWindow(QMainWindow):
         
         self.txt_digitos = QLineEdit()
         self.txt_digitos.setPlaceholderText("Digite os últimos dígitos ANTES da /")
-        self.txt_digitos.setFixedHeight(35)
+        self.txt_digitos.setMinimumHeight(35) # Alterado de fixed para minimum
         self.txt_digitos.returnPressed.connect(self.buscar_volume_btn)
         controles_layout.addWidget(self.txt_digitos)
         
@@ -195,6 +210,7 @@ class ConferenciaWindow(QMainWindow):
                 padding: 12px;
                 font-size: 13px;
                 font-weight: bold;
+                border-radius: 5px;
             }
             QPushButton:hover {
                 background-color: #218838;
@@ -203,7 +219,7 @@ class ConferenciaWindow(QMainWindow):
                 background-color: #6c757d;
             }
         """)
-        self.btn_buscar.setFixedHeight(45)
+        self.btn_buscar.setMinimumHeight(45)
         self.btn_buscar.clicked.connect(self.buscar_volume_btn)
         self.btn_buscar.setEnabled(False)
         controles_layout.addWidget(self.btn_buscar)
@@ -218,8 +234,11 @@ class ConferenciaWindow(QMainWindow):
                 padding: 10px;
             }
         """)
-        dica_frame.setFixedHeight(80)
+        # Removido setFixedHeight(80) para evitar corte de texto
+        dica_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        
         dica_layout = QVBoxLayout(dica_frame)
+        dica_layout.setContentsMargins(10, 10, 10, 10) # Margens internas garantidas
         
         dica_titulo = QLabel("💡 Dica Importante")
         dica_titulo.setStyleSheet("font-weight: bold; color: #0066cc; margin-bottom: 5px; font-size: 11px;")
@@ -230,7 +249,7 @@ class ConferenciaWindow(QMainWindow):
             "(últimos 4 dígitos antes da barra)"
         )
         dica_texto.setStyleSheet("font-size: 11px; color: #0066cc; line-height: 1.3;")
-        dica_texto.setWordWrap(True)
+        dica_texto.setWordWrap(True) # Garantia visual
         dica_layout.addWidget(dica_texto)
         
         controles_layout.addWidget(dica_frame)
@@ -248,6 +267,7 @@ class ConferenciaWindow(QMainWindow):
         
         # Cards de estatísticas
         cards_layout = QHBoxLayout()
+        cards_layout.setSpacing(8)
         
         # Card Total Volumes
         card_volumes = self.criar_card_estatistica("VOLUMES", "0", "#007bff")
@@ -273,15 +293,17 @@ class ConferenciaWindow(QMainWindow):
                 padding: 12px;
             }
         """)
+        detalhes_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding) # Permitir expansão
+        
         detalhes_layout = QVBoxLayout(detalhes_frame)
         
         self.lbl_detalhes_stats = QLabel("Inicie a conferência para ver as estatísticas...")
         self.lbl_detalhes_stats.setStyleSheet("font-size: 12px; line-height: 1.4;")
         self.lbl_detalhes_stats.setWordWrap(True)
+        self.lbl_detalhes_stats.setAlignment(Qt.AlignTop | Qt.AlignLeft) # Alinhamento ao topo
         detalhes_layout.addWidget(self.lbl_detalhes_stats)
         
         stats_layout.addWidget(detalhes_frame)
-        stats_layout.addStretch()
         
         # POLÍTICA DE TAMANHO para expansão controlada
         stats_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
@@ -290,24 +312,29 @@ class ConferenciaWindow(QMainWindow):
     def criar_card_estatistica(self, titulo, valor, cor):
         """Cria um card de estatística individual - OTIMIZADO"""
         card = QFrame()
-        card.setFixedHeight(80)
+        # setFixedHeight(80) alterado para Minimum para evitar cortes
+        card.setMinimumHeight(80)
+        card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         card.setStyleSheet(f"""
             QFrame {{
                 background-color: {cor};
                 border-radius: 8px;
-                padding: 12px;
+                padding: 8px;
             }}
         """)
         card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(2)
+        card_layout.setContentsMargins(5, 5, 5, 5)
         
         lbl_titulo = QLabel(titulo)
         lbl_titulo.setStyleSheet("""
             color: white;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: bold;
-            margin-bottom: 5px;
+            margin-bottom: 2px;
         """)
         lbl_titulo.setAlignment(Qt.AlignCenter)
+        lbl_titulo.setWordWrap(True)
         card_layout.addWidget(lbl_titulo)
         
         lbl_valor = QLabel(valor)
@@ -317,6 +344,7 @@ class ConferenciaWindow(QMainWindow):
             font-weight: bold;
         """)
         lbl_valor.setAlignment(Qt.AlignCenter)
+        lbl_valor.setWordWrap(False) # Valores curtos não devem quebrar
         card_layout.addWidget(lbl_valor)
         
         # Armazenar referência para atualização
@@ -335,7 +363,7 @@ class ConferenciaWindow(QMainWindow):
         resultados_layout = QVBoxLayout(resultados_group)
         resultados_layout.setSpacing(10)
         
-        # Área de resultados - ALTURA FLEXÍVEL
+        # Área de resultados - EXPANSÍVEL
         self.txt_resultado = QTextEdit()
         self.txt_resultado.setReadOnly(True)
         self.txt_resultado.setStyleSheet("""
@@ -358,6 +386,8 @@ class ConferenciaWindow(QMainWindow):
 • Clique em 'INICIAR CONFERÊNCIA' para começar
 • Use os campos à esquerda para buscar volumes
         """)
+        # Importante: Permitir que o QTextEdit ocupe o espaço disponível
+        self.txt_resultado.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         resultados_layout.addWidget(self.txt_resultado)
         
         # Botão de confirmação
@@ -366,12 +396,12 @@ class ConferenciaWindow(QMainWindow):
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
-                padding: 15px;
+                padding: 10px;
                 border: none;
                 border-radius: 5px;
-                font-size: 16px;
+                font-size: 15px;
                 font-weight: bold;
-                margin-top: 8px;
+                margin-top: 5px;
             }
             QPushButton:hover {
                 background-color: #45a049;
@@ -380,14 +410,17 @@ class ConferenciaWindow(QMainWindow):
                 background-color: #6c757d;
             }
         """)
-        self.btn_confirmar.setFixedHeight(50)
+        self.btn_confirmar.setMinimumHeight(50)
         self.btn_confirmar.clicked.connect(self.confirmar_recebimento)
         self.btn_confirmar.setVisible(False)
         resultados_layout.addWidget(self.btn_confirmar)
         
-        # Histórico rápido - ALTURA FIXA
+        # Histórico rápido
         historico_frame = QFrame()
-        historico_frame.setFixedHeight(70)
+        # Removido setFixedHeight(70) para evitar corte
+        historico_frame.setMinimumHeight(70)
+        historico_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
+        
         historico_frame.setStyleSheet("""
             QFrame {
                 background-color: #fff3cd;
@@ -398,6 +431,7 @@ class ConferenciaWindow(QMainWindow):
             }
         """)
         historico_layout = QVBoxLayout(historico_frame)
+        historico_layout.setContentsMargins(10, 10, 10, 10)
         
         historico_titulo = QLabel("📝 ULTIMAS ACOES")
         historico_titulo.setStyleSheet("font-weight: bold; color: #856404; margin-bottom: 5px; font-size: 11px;")
@@ -405,7 +439,7 @@ class ConferenciaWindow(QMainWindow):
         
         self.lbl_historico = QLabel("Nenhuma ação realizada")
         self.lbl_historico.setStyleSheet("font-size: 11px; color: #856404; line-height: 1.3;")
-        self.lbl_historico.setWordWrap(True)
+        self.lbl_historico.setWordWrap(True) # Essencial
         historico_layout.addWidget(self.lbl_historico)
         
         resultados_layout.addWidget(historico_frame)
@@ -417,7 +451,8 @@ class ConferenciaWindow(QMainWindow):
     def criar_barra_progresso(self, layout):
         """Cria a barra de progresso - OTIMIZADA"""
         progresso_frame = QFrame()
-        progresso_frame.setFixedHeight(70)
+        # Alterado de Fixed para Minimum
+        progresso_frame.setMinimumHeight(70)
         progresso_frame.setStyleSheet("""
             QFrame {
                 background-color: white;
@@ -433,6 +468,7 @@ class ConferenciaWindow(QMainWindow):
         
         self.lbl_progresso_texto = QLabel("Progresso da conferência: 0%")
         self.lbl_progresso_texto.setStyleSheet("font-weight: bold; color: #495057; font-size: 13px;")
+        self.lbl_progresso_texto.setWordWrap(True)
         labels_layout.addWidget(self.lbl_progresso_texto)
         
         labels_layout.addStretch()
@@ -445,7 +481,7 @@ class ConferenciaWindow(QMainWindow):
         
         # Barra de progresso
         self.barra_progresso = QProgressBar()
-        self.barra_progresso.setFixedHeight(20)
+        self.barra_progresso.setFixedHeight(20) # Barra em si pode ser fixa
         self.barra_progresso.setStyleSheet("""
             QProgressBar {
                 border: 1px solid #dee2e6;
@@ -468,7 +504,8 @@ class ConferenciaWindow(QMainWindow):
     def criar_rodape(self, layout):
         """Cria o rodapé com botões de ação - OTIMIZADO"""
         rodape_frame = QFrame()
-        rodape_frame.setFixedHeight(80)
+        # Alterado de Fixed para Minimum para garantir que botões não cortem se layout apertar
+        rodape_frame.setMinimumHeight(80)
         rodape_frame.setStyleSheet("""
             QFrame {
                 background-color: white;
@@ -490,12 +527,13 @@ class ConferenciaWindow(QMainWindow):
                 font-size: 13px;
                 font-weight: bold;
                 min-width: 160px;
+                border-radius: 5px;
             }
             QPushButton:hover {
                 background-color: #218838;
             }
         """)
-        self.btn_iniciar.setFixedHeight(45)
+        self.btn_iniciar.setMinimumHeight(45)
         self.btn_iniciar.clicked.connect(self.iniciar_conferencia_handler)
         rodape_layout.addWidget(self.btn_iniciar)
         
@@ -509,6 +547,7 @@ class ConferenciaWindow(QMainWindow):
                 font-size: 13px;
                 font-weight: bold;
                 min-width: 160px;
+                border-radius: 5px;
             }
             QPushButton:hover {
                 background-color: #e0a800;
@@ -518,7 +557,7 @@ class ConferenciaWindow(QMainWindow):
                 color: white;
             }
         """)
-        self.btn_finalizar.setFixedHeight(45)
+        self.btn_finalizar.setMinimumHeight(45)
         self.btn_finalizar.clicked.connect(self.finalizar_conferencia_handler)
         self.btn_finalizar.setEnabled(False)
         rodape_layout.addWidget(self.btn_finalizar)
@@ -534,12 +573,13 @@ class ConferenciaWindow(QMainWindow):
                 padding: 12px 20px;
                 font-size: 13px;
                 min-width: 100px;
+                border-radius: 5px;
             }
             QPushButton:hover {
                 background-color: #c82333;
             }
         """)
-        btn_fechar.setFixedHeight(45)
+        btn_fechar.setMinimumHeight(45)
         btn_fechar.clicked.connect(self.close)
         rodape_layout.addWidget(btn_fechar)
         
@@ -929,6 +969,7 @@ class VolumeMultiploDialog(QDialog):
         font.setPointSize(12)
         font.setBold(True)
         titulo.setFont(font)
+        titulo.setWordWrap(True)
         layout.addWidget(titulo)
         
         # Informações
@@ -938,6 +979,7 @@ class VolumeMultiploDialog(QDialog):
             f"<b>Total de caixas:</b> {self.volume['quantidade_expedida']}"
         )
         info.setStyleSheet("padding: 10px; background-color: #f5f5f5; border-radius: 5px;")
+        info.setWordWrap(True)
         layout.addWidget(info)
         
         # Status e seleção de caixas
