@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QTableWidgetItem, QTabWidget, QHeaderView,
                              QMessageBox, QDateEdit, QComboBox, QFormLayout,
                              QGroupBox, QCheckBox, QDialog, QDialogButtonBox, QSpinBox, QApplication)
-from PyQt5.QtCore import QDate, Qt
+from PyQt5.QtCore import QDate, Qt, pyqtSignal  # ADICIONADO: pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 import sys
 import os
@@ -23,6 +23,9 @@ from database import (listar_manifestos, listar_volumes, obter_manifesto,
 
 class BuscaWindow(QMainWindow):
     """Janela para busca avançada de manifestos e volumes"""
+    
+    # ADICIONADO: Sinal para notificar quando volumes são recebidos
+    volume_recebido = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -757,6 +760,8 @@ class BuscaWindow(QMainWindow):
                         "Sucesso",
                         f"{dialog.quantidade_marcada} caixa(s) marcada(s) como recebida(s) com sucesso!"
                     )
+                    # ADICIONADO: Emitir sinal após receber múltiplas caixas
+                    self.volume_recebido.emit()
             else:
                 # Se for apenas uma caixa, confirmar recebimento
                 reply = QMessageBox.question(
@@ -774,6 +779,8 @@ class BuscaWindow(QMainWindow):
                         "Sucesso", 
                         f"Volume {volume_id} recebido com sucesso!"
                     )
+                    # ADICIONADO: Emitir sinal após receber volume único
+                    self.volume_recebido.emit()
             
             # Atualizar a tabela de volumes
             self.buscar_volumes()

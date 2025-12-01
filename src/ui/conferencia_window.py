@@ -7,9 +7,10 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QLabel, QLineEdit, QPushButton, QTextEdit,
                              QGroupBox, QMessageBox, QDialog, QSpinBox,
                              QCheckBox, QFrame, QScrollArea, QRadioButton,
-                             QButtonGroup, QInputDialog)
+                             QButtonGroup, QInputDialog, QApplication, 
+                             QDesktopWidget, QGridLayout, QProgressBar, QSizePolicy)
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont, QColor, QPalette
+from PyQt5.QtGui import QFont, QColor, QPalette, QIcon
 from datetime import datetime
 
 from src.database import (obter_manifesto, buscar_volume, obter_caixas,
@@ -21,7 +22,7 @@ from src.pdf_extractor import ManifestoExtractor
 
 
 class ConferenciaWindow(QMainWindow):
-    """Janela principal de conferência de manifestos"""
+    """Janela principal de conferência de manifestos - Tela Cheia OTIMIZADA COM FUNCIONALIDADE COMPLETA"""
     
     conferencia_finalizada = pyqtSignal()
     
@@ -30,159 +31,336 @@ class ConferenciaWindow(QMainWindow):
         self.manifesto_id = manifesto_id
         self.manifesto = obter_manifesto(manifesto_id)
         self.conferencia_ativa = False
-        self.volume_encontrado = None  # Armazena volume para confirmação
-        self.usuario_conferente = ""  # Armazena nome do usuário
+        self.volume_encontrado = None
+        self.usuario_conferente = ""
         self.init_ui()
         self.carregar_manifesto()
+        self.showMaximized()  # Abre em tela cheia
         
     def init_ui(self):
-        """Inicializa a interface"""
-        self.setWindowTitle("Conferência de Manifesto")
-        self.setGeometry(150, 150, 1000, 750)
+        """Inicializa a interface OTIMIZADA para tela cheia"""
+        self.setWindowTitle(f"Conferência - {self.manifesto['numero_manifesto']}")
         
-        # ScrollArea principal
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        # Configuração para tela cheia - sem tamanho mínimo fixo
+        self.setMinimumSize(800, 600)
         
-        # Widget central dentro do scroll
+        # Widget central
         central_widget = QWidget()
-        scroll.setWidget(central_widget)
-        self.setCentralWidget(scroll)
+        self.setCentralWidget(central_widget)
         
-        layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        # Layout principal em grid - OTIMIZADO PARA TELA CHEIA
+        main_layout = QGridLayout(central_widget)
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
         
-        # Cabeçalho do manifesto
-        self.criar_cabecalho(layout)
+        # ===== HEADER =====
+        self.criar_header(main_layout)
         
-        # Área de busca
-        self.criar_area_busca(layout)
+        # ===== PAINEL ESQUERDO - CONTROLES =====
+        self.criar_painel_controles(main_layout)
         
-        # Área de resultados (com botão de confirmação)
-        self.criar_area_resultados(layout)
+        # ===== PAINEL CENTRAL - ESTATÍSTICAS =====
+        self.criar_painel_estatisticas(main_layout)
         
-        # Resumo
-        self.criar_resumo(layout)
+        # ===== PAINEL DIREITO - RESULTADOS =====
+        self.criar_painel_resultados(main_layout)
         
-        # Botões de ação
-        self.criar_botoes_acao(layout)
+        # ===== BARRA DE PROGRESSO =====
+        self.criar_barra_progresso(main_layout)
         
-    def criar_cabecalho(self, layout):
-        """Cria o cabeçalho com informações do manifesto"""
-        group = QGroupBox("📋 Informações do Manifesto")
-        group_layout = QVBoxLayout()
+        # ===== RODAPÉ - BOTÕES DE AÇÃO =====
+        self.criar_rodape(main_layout)
         
-        info_text = f"""
-        <b>Nº Manifesto:</b> {self.manifesto['numero_manifesto']}<br>
-        <b>Data:</b> {self.manifesto['data_manifesto']}<br>
-        <b>Destino:</b> {self.manifesto['terminal_destino']}<br>
-        """
+        # CONFIGURAÇÃO CRÍTICA PARA TELA CHEIA
+        main_layout.setColumnStretch(0, 1)  # Coluna controles
+        main_layout.setColumnStretch(1, 1)  # Coluna estatísticas  
+        main_layout.setColumnStretch(2, 2)  # Coluna resultados (MAIOR)
+        main_layout.setRowStretch(1, 3)     # Linha principal ALTAMENTE EXPANSÍVEL
+        main_layout.setRowStretch(2, 0)     # Barra progresso - fixa
+        main_layout.setRowStretch(3, 0)     # Rodapé - fixo
         
-        lbl_info = QLabel(info_text)
-        lbl_info.setStyleSheet("padding: 10px; background-color: #f5f5f5; border-radius: 5px;")
-        group_layout.addWidget(lbl_info)
+    def criar_header(self, layout):
+        """Cria o cabeçalho com informações principais - OTIMIZADO"""
+        header_frame = QFrame()
+        header_frame.setStyleSheet("""
+            QFrame {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #007bff, stop:1 #0056b3);
+                border-radius: 10px;
+                padding: 15px;
+            }
+        """)
+        header_frame.setFixedHeight(100)  # Altura fixa para header
+        header_layout = QHBoxLayout(header_frame)
         
-        group.setLayout(group_layout)
-        layout.addWidget(group)
+        # Informações do manifesto
+        info_layout = QVBoxLayout()
         
-    def criar_area_busca(self, layout):
-        """Cria a área de busca de volumes"""
-        group = QGroupBox("🔍 Conferência de Volumes")
-        group_layout = QVBoxLayout()
+        titulo = QLabel("CONFERÊNCIA DE MANIFESTO")
+        titulo.setStyleSheet("""
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        """)
+        info_layout.addWidget(titulo)
+        
+        detalhes = QLabel(
+            f"<b>Manifesto:</b> {self.manifesto['numero_manifesto']} | "
+            f"<b>Data:</b> {self.manifesto['data_manifesto']} | "
+            f"<b>Destino:</b> {self.manifesto['terminal_destino']}"
+        )
+        detalhes.setStyleSheet("color: white; font-size: 12px;")
+        detalhes.setTextFormat(Qt.RichText)
+        info_layout.addWidget(detalhes)
+        
+        header_layout.addLayout(info_layout)
+        header_layout.addStretch()
+        
+        # Status da conferência
+        status_layout = QVBoxLayout()
+        self.lbl_status_conferencia = QLabel("CONFERÊNCIA NÃO INICIADA")
+        self.lbl_status_conferencia.setStyleSheet("""
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 6px 15px;
+            background-color: rgba(255,255,255,0.2);
+            border-radius: 15px;
+        """)
+        self.lbl_status_conferencia.setAlignment(Qt.AlignCenter)
+        status_layout.addWidget(self.lbl_status_conferencia)
+        
+        self.lbl_conferente = QLabel("Conferente: ---")
+        self.lbl_conferente.setStyleSheet("color: white; font-size: 11px;")
+        self.lbl_conferente.setAlignment(Qt.AlignCenter)
+        status_layout.addWidget(self.lbl_conferente)
+        
+        header_layout.addLayout(status_layout)
+        
+        layout.addWidget(header_frame, 0, 0, 1, 3)
+        
+    def criar_painel_controles(self, layout):
+        """Cria o painel esquerdo com controles de busca - OTIMIZADO"""
+        controles_group = QGroupBox("🔍 BUSCAR VOLUME")
+        controles_layout = QVBoxLayout(controles_group)
+        controles_layout.setSpacing(12)
         
         # Instrução
-        lbl_instrucao = QLabel(
+        instrucao = QLabel(
             "Digite o <b>REMETENTE</b> e os <b>ÚLTIMOS DÍGITOS ANTES DA /</b> do n° do volume:"
         )
-        group_layout.addWidget(lbl_instrucao)
+        instrucao.setStyleSheet("font-size: 12px; color: #6c757d; margin-bottom: 10px;")
+        instrucao.setWordWrap(True)
+        instrucao.setFixedHeight(40)
+        controles_layout.addWidget(instrucao)
         
         # Campo Remetente
-        remetente_layout = QHBoxLayout()
-        remetente_layout.addWidget(QLabel("Remetente:"))
+        lbl_remetente = QLabel("Remetente:")
+        lbl_remetente.setStyleSheet("font-weight: bold; color: #495057; font-size: 12px;")
+        controles_layout.addWidget(lbl_remetente)
         
         self.txt_remetente = QLineEdit()
-        self.txt_remetente.setPlaceholderText("Ex: PAMASP, CABW")
-        self.txt_remetente.setMaximumWidth(200)
+        self.txt_remetente.setPlaceholderText("Ex: PAMASP, CABW, etc...")
+        self.txt_remetente.setFixedHeight(35)
         self.txt_remetente.textChanged.connect(self.atualizar_instrucao_digitos)
         self.txt_remetente.returnPressed.connect(self.focar_digitos)
-        remetente_layout.addWidget(self.txt_remetente)
+        controles_layout.addWidget(self.txt_remetente)
         
-        remetente_layout.addStretch()
-        group_layout.addLayout(remetente_layout)
-        
-        # Campo Últimos Dígitos
-        digitos_layout = QHBoxLayout()
-        
+        # Campo Dígitos
+        lbl_digitos_layout = QHBoxLayout()
         self.lbl_digitos = QLabel("Últimos 4 dígitos (antes da /):")
-        digitos_layout.addWidget(self.lbl_digitos)
+        self.lbl_digitos.setStyleSheet("font-weight: bold; color: #495057; font-size: 12px;")
+        lbl_digitos_layout.addWidget(self.lbl_digitos)
+        
+        lbl_digitos_layout.addStretch()
+        
+        self.lbl_exemplo = QLabel("Ex: 4311")
+        self.lbl_exemplo.setStyleSheet("color: #6c757d; font-size: 11px; font-style: italic;")
+        lbl_digitos_layout.addWidget(self.lbl_exemplo)
+        controles_layout.addLayout(lbl_digitos_layout)
         
         self.txt_digitos = QLineEdit()
         self.txt_digitos.setPlaceholderText("Digite os últimos dígitos ANTES da /")
-        self.txt_digitos.setMaximumWidth(250)
-        self.txt_digitos.returnPressed.connect(self.buscar_volume_tecla_enter)
-        digitos_layout.addWidget(self.txt_digitos)
+        self.txt_digitos.setFixedHeight(35)
+        self.txt_digitos.returnPressed.connect(self.buscar_volume_btn)
+        controles_layout.addWidget(self.txt_digitos)
         
-        btn_buscar = QPushButton("🔍 Buscar")
-        btn_buscar.setStyleSheet("""
+        # Botão Buscar
+        self.btn_buscar = QPushButton("🔍 BUSCAR VOLUME")
+        self.btn_buscar.setStyleSheet("""
             QPushButton {
-                background-color: #2196F3;
+                background-color: #28a745;
                 color: white;
-                padding: 8px 20px;
-                border: none;
-                border-radius: 5px;
+                padding: 12px;
+                font-size: 13px;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #0b7dda;
+                background-color: #218838;
+            }
+            QPushButton:disabled {
+                background-color: #6c757d;
             }
         """)
-        btn_buscar.clicked.connect(self.buscar_volume_btn)
-        digitos_layout.addWidget(btn_buscar)
+        self.btn_buscar.setFixedHeight(45)
+        self.btn_buscar.clicked.connect(self.buscar_volume_btn)
+        self.btn_buscar.setEnabled(False)
+        controles_layout.addWidget(self.btn_buscar)
         
-        digitos_layout.addStretch()
-        group_layout.addLayout(digitos_layout)
+        # Dica interativa
+        dica_frame = QFrame()
+        dica_frame.setStyleSheet("""
+            QFrame {
+                background-color: #e7f3ff;
+                border: 1px solid #b3d9ff;
+                border-radius: 6px;
+                padding: 10px;
+            }
+        """)
+        dica_frame.setFixedHeight(80)
+        dica_layout = QVBoxLayout(dica_frame)
         
-        # Dica
-        lbl_dica = QLabel(
-            "💡 <i>Exemplo: 251381004311/0001 → Digite apenas '4311' (4 últimos antes da /)</i>"
+        dica_titulo = QLabel("💡 Dica Importante")
+        dica_titulo.setStyleSheet("font-weight: bold; color: #0066cc; margin-bottom: 5px; font-size: 11px;")
+        dica_layout.addWidget(dica_titulo)
+        
+        dica_texto = QLabel(
+            "Para <b>251381004311/0001</b>, digite apenas <b>4311</b><br>"
+            "(últimos 4 dígitos antes da barra)"
         )
-        lbl_dica.setStyleSheet("color: #666; font-size: 11px;")
-        group_layout.addWidget(lbl_dica)
+        dica_texto.setStyleSheet("font-size: 11px; color: #0066cc; line-height: 1.3;")
+        dica_texto.setWordWrap(True)
+        dica_layout.addWidget(dica_texto)
         
-        group.setLayout(group_layout)
-        layout.addWidget(group)
+        controles_layout.addWidget(dica_frame)
+        controles_layout.addStretch()
         
-    def criar_area_resultados(self, layout):
-        """Cria a área de exibição de resultados"""
-        group = QGroupBox("📦 Resultado da Busca")
-        group_layout = QVBoxLayout()
+        # POLÍTICA DE TAMANHO para expansão controlada
+        controles_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        layout.addWidget(controles_group, 1, 0)
         
-        # Área de texto com scroll
-        scroll_resultado = QScrollArea()
-        scroll_resultado.setWidgetResizable(True)
-        scroll_resultado.setMinimumHeight(200)
-        scroll_resultado.setMaximumHeight(350)
+    def criar_painel_estatisticas(self, layout):
+        """Cria o painel central com estatísticas - OTIMIZADO"""
+        stats_group = QGroupBox("📊 PROGRESSO")
+        stats_layout = QVBoxLayout(stats_group)
+        stats_layout.setSpacing(10)
         
+        # Cards de estatísticas
+        cards_layout = QHBoxLayout()
+        
+        # Card Total Volumes
+        card_volumes = self.criar_card_estatistica("VOLUMES", "0", "#007bff")
+        cards_layout.addWidget(card_volumes)
+        
+        # Card Caixas
+        card_caixas = self.criar_card_estatistica("CAIXAS", "0/0", "#28a745")
+        cards_layout.addWidget(card_caixas)
+        
+        # Card Progresso
+        card_progresso = self.criar_card_estatistica("PROGRESSO", "0%", "#ffc107")
+        cards_layout.addWidget(card_progresso)
+        
+        stats_layout.addLayout(cards_layout)
+        
+        # Detalhamento - ALTURA FLEXÍVEL
+        detalhes_frame = QFrame()
+        detalhes_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 12px;
+            }
+        """)
+        detalhes_layout = QVBoxLayout(detalhes_frame)
+        
+        self.lbl_detalhes_stats = QLabel("Inicie a conferência para ver as estatísticas...")
+        self.lbl_detalhes_stats.setStyleSheet("font-size: 12px; line-height: 1.4;")
+        self.lbl_detalhes_stats.setWordWrap(True)
+        detalhes_layout.addWidget(self.lbl_detalhes_stats)
+        
+        stats_layout.addWidget(detalhes_frame)
+        stats_layout.addStretch()
+        
+        # POLÍTICA DE TAMANHO para expansão controlada
+        stats_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        layout.addWidget(stats_group, 1, 1)
+        
+    def criar_card_estatistica(self, titulo, valor, cor):
+        """Cria um card de estatística individual - OTIMIZADO"""
+        card = QFrame()
+        card.setFixedHeight(80)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: {cor};
+                border-radius: 8px;
+                padding: 12px;
+            }}
+        """)
+        card_layout = QVBoxLayout(card)
+        
+        lbl_titulo = QLabel(titulo)
+        lbl_titulo.setStyleSheet("""
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        """)
+        lbl_titulo.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(lbl_titulo)
+        
+        lbl_valor = QLabel(valor)
+        lbl_valor.setStyleSheet("""
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+        """)
+        lbl_valor.setAlignment(Qt.AlignCenter)
+        card_layout.addWidget(lbl_valor)
+        
+        # Armazenar referência para atualização
+        if titulo == "VOLUMES":
+            self.lbl_total_volumes = lbl_valor
+        elif titulo == "CAIXAS":
+            self.lbl_total_caixas = lbl_valor
+        elif titulo == "PROGRESSO":
+            self.lbl_progresso = lbl_valor
+            
+        return card
+        
+    def criar_painel_resultados(self, layout):
+        """Cria o painel direito com resultados - ALTAMENTE OTIMIZADO"""
+        resultados_group = QGroupBox("📦 RESULTADO DA BUSCA")
+        resultados_layout = QVBoxLayout(resultados_group)
+        resultados_layout.setSpacing(10)
+        
+        # Área de resultados - ALTURA FLEXÍVEL
         self.txt_resultado = QTextEdit()
         self.txt_resultado.setReadOnly(True)
-        self.txt_resultado.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
         self.txt_resultado.setStyleSheet("""
             QTextEdit {
-                border: 2px solid #ddd;
-                border-radius: 5px;
-                padding: 10px;
-                font-family: 'Courier New', monospace;
+                font-family: 'Consolas', 'Monaco', monospace;
                 font-size: 12px;
+                line-height: 1.3;
+                border: 2px solid #e9ecef;
+                border-radius: 6px;
+                padding: 12px;
+                background-color: #f8f9fa;
             }
         """)
+        self.txt_resultado.setText("""
+╔══════════════════════════════════════════════════════════════╗
+║                 AGUARDANDO CONFERÊNCIA                      ║
+╚══════════════════════════════════════════════════════════════╝
+
+• A conferência ainda não foi iniciada
+• Clique em 'INICIAR CONFERÊNCIA' para começar
+• Use os campos à esquerda para buscar volumes
+        """)
+        resultados_layout.addWidget(self.txt_resultado)
         
-        scroll_resultado.setWidget(self.txt_resultado)
-        group_layout.addWidget(self.txt_resultado)
-        
-        # Botão de confirmação (inicialmente oculto)
+        # Botão de confirmação
         self.btn_confirmar = QPushButton("✅ CONFIRMAR RECEBIMENTO")
         self.btn_confirmar.setStyleSheet("""
             QPushButton {
@@ -193,87 +371,182 @@ class ConferenciaWindow(QMainWindow):
                 border-radius: 5px;
                 font-size: 16px;
                 font-weight: bold;
+                margin-top: 8px;
             }
             QPushButton:hover {
                 background-color: #45a049;
             }
+            QPushButton:disabled {
+                background-color: #6c757d;
+            }
         """)
+        self.btn_confirmar.setFixedHeight(50)
         self.btn_confirmar.clicked.connect(self.confirmar_recebimento)
         self.btn_confirmar.setVisible(False)
-        group_layout.addWidget(self.btn_confirmar)
+        resultados_layout.addWidget(self.btn_confirmar)
         
-        group.setLayout(group_layout)
-        layout.addWidget(group)
-        
-    def criar_resumo(self, layout):
-        """Cria o resumo da conferência"""
-        group = QGroupBox("📊 Resumo da Conferência")
-        group_layout = QVBoxLayout()
-        
-        self.lbl_resumo = QLabel("Aguardando início da conferência...")
-        self.lbl_resumo.setStyleSheet("""
-            padding: 15px;
-            background-color: #f5f5f5;
-            border-radius: 5px;
-            font-size: 13px;
+        # Histórico rápido - ALTURA FIXA
+        historico_frame = QFrame()
+        historico_frame.setFixedHeight(70)
+        historico_frame.setStyleSheet("""
+            QFrame {
+                background-color: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 6px;
+                padding: 10px;
+                margin-top: 8px;
+            }
         """)
-        group_layout.addWidget(self.lbl_resumo)
+        historico_layout = QVBoxLayout(historico_frame)
         
-        group.setLayout(group_layout)
-        layout.addWidget(group)
+        historico_titulo = QLabel("📝 ULTIMAS ACOES")
+        historico_titulo.setStyleSheet("font-weight: bold; color: #856404; margin-bottom: 5px; font-size: 11px;")
+        historico_layout.addWidget(historico_titulo)
         
-    def criar_botoes_acao(self, layout):
-        """Cria os botões de ação"""
-        btn_layout = QHBoxLayout()
+        self.lbl_historico = QLabel("Nenhuma ação realizada")
+        self.lbl_historico.setStyleSheet("font-size: 11px; color: #856404; line-height: 1.3;")
+        self.lbl_historico.setWordWrap(True)
+        historico_layout.addWidget(self.lbl_historico)
         
-        self.btn_iniciar = QPushButton("▶️ Iniciar Conferência")
+        resultados_layout.addWidget(historico_frame)
+        
+        # POLÍTICA DE TAMANHO para expansão máxima
+        resultados_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        layout.addWidget(resultados_group, 1, 2)
+        
+    def criar_barra_progresso(self, layout):
+        """Cria a barra de progresso - OTIMIZADA"""
+        progresso_frame = QFrame()
+        progresso_frame.setFixedHeight(70)
+        progresso_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        progresso_layout = QVBoxLayout(progresso_frame)
+        
+        # Labels de progresso
+        labels_layout = QHBoxLayout()
+        
+        self.lbl_progresso_texto = QLabel("Progresso da conferência: 0%")
+        self.lbl_progresso_texto.setStyleSheet("font-weight: bold; color: #495057; font-size: 13px;")
+        labels_layout.addWidget(self.lbl_progresso_texto)
+        
+        labels_layout.addStretch()
+        
+        self.lbl_tempo_decorrido = QLabel("Tempo: --:--:--")
+        self.lbl_tempo_decorrido.setStyleSheet("color: #6c757d; font-size: 11px;")
+        labels_layout.addWidget(self.lbl_tempo_decorrido)
+        
+        progresso_layout.addLayout(labels_layout)
+        
+        # Barra de progresso
+        self.barra_progresso = QProgressBar()
+        self.barra_progresso.setFixedHeight(20)
+        self.barra_progresso.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                text-align: center;
+                background-color: #e9ecef;
+                height: 20px;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background-color: #28a745;
+                border-radius: 3px;
+            }
+        """)
+        self.barra_progresso.setValue(0)
+        progresso_layout.addWidget(self.barra_progresso)
+        
+        layout.addWidget(progresso_frame, 2, 0, 1, 3)
+        
+    def criar_rodape(self, layout):
+        """Cria o rodapé com botões de ação - OTIMIZADO"""
+        rodape_frame = QFrame()
+        rodape_frame.setFixedHeight(80)
+        rodape_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 12px;
+            }
+        """)
+        rodape_layout = QHBoxLayout(rodape_frame)
+        rodape_layout.setSpacing(15)
+        
+        # Botão Iniciar
+        self.btn_iniciar = QPushButton("▶️ INICIAR CONFERÊNCIA")
         self.btn_iniciar.setStyleSheet("""
             QPushButton {
                 background-color: #4CAF50;
                 color: white;
-                padding: 12px 25px;
-                border: none;
-                border-radius: 5px;
-                font-size: 14px;
+                padding: 12px 20px;
+                font-size: 13px;
                 font-weight: bold;
+                min-width: 160px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background-color: #218838;
             }
         """)
+        self.btn_iniciar.setFixedHeight(45)
         self.btn_iniciar.clicked.connect(self.iniciar_conferencia_handler)
-        btn_layout.addWidget(self.btn_iniciar)
+        rodape_layout.addWidget(self.btn_iniciar)
         
-        self.btn_finalizar = QPushButton("✅ Finalizar Conferência")
+        # Botão Finalizar
+        self.btn_finalizar = QPushButton("✅ FINALIZAR CONFERÊNCIA")
         self.btn_finalizar.setStyleSheet("""
             QPushButton {
-                background-color: #FF9800;
-                color: white;
-                padding: 12px 25px;
-                border: none;
-                border-radius: 5px;
-                font-size: 14px;
+                background-color: #ffc107;
+                color: #212529;
+                padding: 12px 20px;
+                font-size: 13px;
                 font-weight: bold;
+                min-width: 160px;
             }
             QPushButton:hover {
-                background-color: #e68900;
+                background-color: #e0a800;
             }
             QPushButton:disabled {
-                background-color: #ccc;
+                background-color: #6c757d;
+                color: white;
             }
         """)
+        self.btn_finalizar.setFixedHeight(45)
         self.btn_finalizar.clicked.connect(self.finalizar_conferencia_handler)
         self.btn_finalizar.setEnabled(False)
-        btn_layout.addWidget(self.btn_finalizar)
+        rodape_layout.addWidget(self.btn_finalizar)
         
-        btn_layout.addStretch()
+        rodape_layout.addStretch()
         
-        btn_fechar = QPushButton("Fechar")
+        # Botão Fechar
+        btn_fechar = QPushButton("FECHAR")
+        btn_fechar.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                padding: 12px 20px;
+                font-size: 13px;
+                min-width: 100px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        btn_fechar.setFixedHeight(45)
         btn_fechar.clicked.connect(self.close)
-        btn_layout.addWidget(btn_fechar)
+        rodape_layout.addWidget(btn_fechar)
         
-        layout.addLayout(btn_layout)
-        
+        layout.addWidget(rodape_frame, 3, 0, 1, 3)
+
+    # === MÉTODOS DE FUNCIONALIDADE - MANTIDOS DA VERSÃO FUNCIONAL ===
+    
     def carregar_manifesto(self):
         """Carrega e atualiza informações do manifesto"""
         self.atualizar_resumo()
@@ -289,16 +562,18 @@ class ConferenciaWindow(QMainWindow):
             self.lbl_digitos.setText("Últimos 4 dígitos (antes da /):")
             self.txt_digitos.setPlaceholderText("Digite os últimos 4 dígitos ANTES da /")
             
+        # Habilitar botão buscar apenas se ambos campos preenchidos
+        self.btn_buscar.setEnabled(
+            bool(self.txt_remetente.text().strip()) and 
+            bool(self.txt_digitos.text().strip())
+        )
+            
     def focar_digitos(self):
         """Move o foco para o campo de dígitos"""
         self.txt_digitos.setFocus()
         
-    def buscar_volume_tecla_enter(self):
-        """Busca volume ao pressionar Enter"""
-        self.buscar_volume_btn()
-        
     def buscar_volume_btn(self):
-        """Busca volume e exibe resultado"""
+        """Busca volume e exibe resultado - FUNCIONALIDADE ORIGINAL"""
         if not self.conferencia_ativa:
             QMessageBox.warning(
                 self,
@@ -338,7 +613,7 @@ class ConferenciaWindow(QMainWindow):
             self.btn_confirmar.setVisible(False)
             
     def exibir_nao_encontrado(self, remetente: str, digitos: str):
-        """Exibe mensagem de volume não encontrado"""
+        """Exibe mensagem de volume não encontrado - FUNCIONALIDADE ORIGINAL"""
         resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║                     ❌ VOLUME NÃO ENCONTRADO                  ║
@@ -372,7 +647,7 @@ Opções:
         self.txt_digitos.setFocus()
         
     def exibir_volume_encontrado(self, volume: dict):
-        """Exibe volume encontrado e aguarda confirmação"""
+        """Exibe volume encontrado e aguarda confirmação - FUNCIONALIDADE ORIGINAL"""
         caixas = obter_caixas(volume['id'])
         
         resultado = f"""
@@ -416,7 +691,7 @@ Status Atual:
         self.txt_resultado.setText(resultado)
         
     def confirmar_recebimento(self):
-        """Confirma o recebimento do volume encontrado"""
+        """Confirma o recebimento do volume encontrado - FUNCIONALIDADE ORIGINAL"""
         if not self.volume_encontrado:
             return
         
@@ -450,7 +725,7 @@ Status Atual:
         self.btn_confirmar.setVisible(False)
         
     def mostrar_sucesso_recebimento(self, volume: dict, recebidas: int, total: int):
-        """Mostra mensagem de sucesso após recebimento"""
+        """Mostra mensagem de sucesso após recebimento - FUNCIONALIDADE ORIGINAL"""
         resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║               ✅ RECEBIMENTO CONFIRMADO COM SUCESSO!          ║
@@ -478,7 +753,7 @@ Recebido por: {self.usuario_conferente}
         self.txt_resultado.setText(resultado)
         
     def exibir_multiplos_volumes(self, volumes: list):
-        """Exibe quando múltiplos volumes são encontrados"""
+        """Exibe quando múltiplos volumes são encontrados - FUNCIONALIDADE ORIGINAL"""
         resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║              ⚠️  MÚLTIPLOS VOLUMES ENCONTRADOS                ║
@@ -505,7 +780,7 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
         self.txt_resultado.setText(resultado)
         
     def atualizar_resumo(self):
-        """Atualiza o resumo da conferência"""
+        """Atualiza o resumo da conferência - FUNCIONALIDADE ORIGINAL"""
         stats = obter_estatisticas_manifesto(self.manifesto_id)
         
         total_vol = stats['total_volumes'] or 0
@@ -517,21 +792,30 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
         parciais = stats['volumes_parciais'] or 0
         nao_rec = stats['volumes_nao_recebidos'] or 0
         
-        resumo = f"""
-<b>📊 ESTATÍSTICAS DA CONFERÊNCIA</b><br><br>
-<b>Total de nºs de volume:</b> {total_vol}<br>
-<b>Total de caixas esperadas:</b> {exp}<br>
-<b>Caixas recebidas:</b> {rec} ({perc:.1f}%)<br><br>
-<b>Status dos volumes:</b><br>
-  ✅ Completos: {completos}<br>
-  ⚠️ Parciais: {parciais}<br>
-  ❌ Não recebidos: {nao_rec}
-"""
+        # Atualizar cards
+        self.lbl_total_volumes.setText(str(total_vol))
+        self.lbl_total_caixas.setText(f"{rec}/{exp}")
+        self.lbl_progresso.setText(f"{perc:.1f}%")
+        self.barra_progresso.setValue(int(perc))
+        self.lbl_progresso_texto.setText(f"Progresso da conferência: {perc:.1f}%")
         
-        self.lbl_resumo.setText(resumo)
+        # Atualizar detalhes
+        detalhes = f"""📊 ESTATÍSTICAS DA CONFERÊNCIA
+
+Total de nºs de volume: {total_vol}
+Total de caixas esperadas: {exp}
+Caixas recebidas: {rec} ({perc:.1f}%)
+Caixas faltantes: {exp - rec}
+
+Status dos volumes:
+  ✅ Completos: {completos}
+  ⚠️ Parciais: {parciais}
+  ❌ Não recebidos: {nao_rec}"""
+        
+        self.lbl_detalhes_stats.setText(detalhes)
         
     def iniciar_conferencia_handler(self):
-        """Inicia a conferência"""
+        """Inicia a conferência - FUNCIONALIDADE ORIGINAL"""
         # Solicitar nome do conferente
         nome, ok = QInputDialog.getText(
             self,
@@ -560,6 +844,10 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
             self.usuario_conferente = nome.strip()
             iniciar_conferencia(self.manifesto_id, self.usuario_conferente)
             self.conferencia_ativa = True
+            
+            # Atualizar interface
+            self.lbl_status_conferencia.setText("CONFERÊNCIA EM ANDAMENTO")
+            self.lbl_conferente.setText(f"Conferente: {self.usuario_conferente}")
             self.btn_iniciar.setEnabled(False)
             self.btn_finalizar.setEnabled(True)
             self.txt_remetente.setFocus()
@@ -571,7 +859,7 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
             )
             
     def finalizar_conferencia_handler(self):
-        """Finaliza a conferência solicitando nome do conferente"""
+        """Finaliza a conferência solicitando nome do conferente - FUNCIONALIDADE ORIGINAL"""
         stats = obter_estatisticas_manifesto(self.manifesto_id)
         
         exp = stats['total_caixas_expedidas'] or 0
@@ -617,7 +905,7 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
 
 
 class VolumeMultiploDialog(QDialog):
-    """Diálogo para selecionar caixas específicas de um volume"""
+    """Diálogo para selecionar caixas específicas de um volume - FUNCIONALIDADE ORIGINAL"""
     
     def __init__(self, volume: dict, caixas: list, parent=None, usuario: str = "Sistema"):
         super().__init__(parent)

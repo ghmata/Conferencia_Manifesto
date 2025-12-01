@@ -178,15 +178,15 @@ class DetalhesManifestoDialog(QDialog):
         header.setSectionResizeMode(8, QHeaderView.Interactive)  # Recebido por - nova coluna
         
         # Definir larguras iniciais - AJUSTES AQUI
-        self.tabela_volumes.setColumnWidth(0, 70)   # Status
+        self.tabela_volumes.setColumnWidth(0, 50)   # Status
         self.tabela_volumes.setColumnWidth(1, 140)  # Remetente (REDUZIDA: 170 - 15 = 155px)
-        self.tabela_volumes.setColumnWidth(2, 100)  # Destinatário
+        self.tabela_volumes.setColumnWidth(2, 95)  # Destinatário
         self.tabela_volumes.setColumnWidth(3, 150)  # N° Volume
         self.tabela_volumes.setColumnWidth(4, 80)   # Caixas
         self.tabela_volumes.setColumnWidth(5, 100)  # Peso (AUMENTADA: 90 + 10 = 100px)
         self.tabela_volumes.setColumnWidth(6, 90)   # Cubagem
-        self.tabela_volumes.setColumnWidth(7, 120)  # Recebido em
-        self.tabela_volumes.setColumnWidth(8, 150)  # Recebido por
+        self.tabela_volumes.setColumnWidth(7, 105)  # Recebido em
+        self.tabela_volumes.setColumnWidth(8, 140)  # Recebido por
         
         # Permitir seleção de texto nas células
         self.tabela_volumes.setSelectionBehavior(QTableWidget.SelectItems)

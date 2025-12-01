@@ -254,6 +254,8 @@ class MainWindow(QMainWindow):
         """Abre janela de busca avançada"""
         from ui.busca_window import BuscaWindow
         self.busca_window = BuscaWindow(self)
+        # ADICIONADO: Conectar sinal para atualização automática
+        self.busca_window.volume_recebido.connect(self.atualizar_tabela)
         self.busca_window.show()
         
     def on_linha_clicada(self, row, column):
@@ -530,10 +532,21 @@ class MainWindow(QMainWindow):
                 )
     
     def abrir_conferencia(self, manifesto_id: int):
-        """Abre janela de conferência"""
-        self.conferencia_window = ConferenciaWindow(manifesto_id, self)
-        self.conferencia_window.show()
-        self.conferencia_window.conferencia_finalizada.connect(self.atualizar_tabela)
+        """Abre janela de conferência com tratamento de erro"""
+        try:
+            from ui.conferencia_window import ConferenciaWindow
+            self.conferencia_window = ConferenciaWindow(manifesto_id, self)
+            if hasattr(self.conferencia_window, 'isVisible'):
+                self.conferencia_window.conferencia_finalizada.connect(self.atualizar_tabela)
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível abrir a conferência")
+        except Exception as e:
+            QMessageBox.critical(
+                self, 
+                "Erro ao Abrir Conferência", 
+                f"Não foi possível abrir a janela de conferência:\n{str(e)}"
+            )
+            print(f"ERRO DETALHADO: {e}")
         
     def inserir_volume_extra(self, manifesto_id: int):
         """Insere volume extra que não constava no manifesto"""
