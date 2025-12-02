@@ -9,12 +9,53 @@ from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import time
 import threading
+import sys
+
+# --- CONFIGURAÇÃO DE IMPORTAÇÃO (CORREÇÃO DO PATH) ---
+sheets = None
+SHEETS_ENABLED = False
+
+try:
+    # 1. Identifica a pasta onde este arquivo (database.py) está
+    current_folder = Path(__file__).resolve().parent
+    
+    # 2. Adiciona essa pasta ao sistema de busca do Python se não estiver lá
+    if str(current_folder) not in sys.path:
+        sys.path.append(str(current_folder))
+
+    # 3. Tenta importar o módulo sheets_sync diretamente
+    import sheets_sync as s
+    sheets = s
+    SHEETS_ENABLED = True
+    # print("✅ Módulo Sheets Sync carregado com sucesso.") # Comentado para limpar log
+
+except ImportError as e:
+    print("--- ERRO DE IMPORTAÇÃO ---")
+    print(f"Erro detalhado: {e}")
+    SHEETS_ENABLED = False
+# -----------------------------------------------------
 
 # Caminho do banco de dados
 DB_PATH = Path("data/database.db")
 
 # Lock global para sincronização
 _db_lock = threading.RLock()
+
+def run_async_sync(target_func, *args, **kwargs):
+    """
+    Envia a tarefa para a fila de processamento do módulo sheets_sync.
+    Isso é não-bloqueante e muito rápido.
+    """
+    if not SHEETS_ENABLED or sheets is None:
+        return
+
+    try:
+        # Passa a função e os argumentos para a fila
+        # O módulo sheets se encarrega de rodar isso em background
+        # Usamos *args apenas, pois a fila espera argumentos posicionais
+        sheets.agendar_tarefa(target_func, *args)
+    except Exception as e:
+        print(f"Erro ao agendar sincronização: {e}")
 
 def init_database():
     """Inicializa o banco de dados criando as tabelas necessárias"""
@@ -23,7 +64,6 @@ def init_database():
     with _db_lock:
         conn = sqlite3.connect(str(DB_PATH), timeout=30.0)
         
-        # Configurar para evitar locks
         conn.execute('PRAGMA journal_mode=WAL')
         conn.execute('PRAGMA synchronous=NORMAL')
         conn.execute('PRAGMA cache_size=10000')
@@ -68,7 +108,7 @@ def init_database():
                 status TEXT CHECK(status IN ('COMPLETO', 'PARCIAL', 'NÃO RECEBIDO', 'VOLUME EXTRA')) DEFAULT 'NÃO RECEBIDO',
                 data_hora_primeira_recepcao DATETIME,
                 data_hora_ultima_recepcao DATETIME,
-                usuario_recepcao TEXT,  -- NOVA COLUNA: armazena quem recebeu o volume
+                usuario_recepcao TEXT,
                 FOREIGN KEY (manifesto_id) REFERENCES manifestos(id),
                 UNIQUE(manifesto_id, numero_volume)
             )
@@ -104,36 +144,25 @@ def init_database():
         conn.commit()
         conn.close()
         
-    # Adicionar coluna usuario_recepcao se não existir
     migrar_schema()
 
 def migrar_schema():
-    """Adiciona a coluna usuario_recepcao se ela não existir na tabela volumes"""
     with _db_lock:
         conn = get_connection()
         try:
             cursor = conn.cursor()
-            
-            # Verificar se a coluna usuario_recepcao existe
             cursor.execute("PRAGMA table_info(volumes)")
             colunas = [coluna[1] for coluna in cursor.fetchall()]
             
             if 'usuario_recepcao' not in colunas:
-                print("Adicionando coluna usuario_recepcao à tabela volumes...")
                 cursor.execute("ALTER TABLE volumes ADD COLUMN usuario_recepcao TEXT")
                 conn.commit()
-                print("Coluna usuario_recepcao adicionada com sucesso!")
-            
         except Exception as e:
             print(f"Erro na migração do schema: {e}")
         finally:
             conn.close()
 
 def get_connection():
-    """
-    Retorna uma conexão com o banco de dados
-    CRÍTICO: Esta função implementa múltiplas estratégias anti-lock
-    """
     max_retries = 5
     retry_delay = 0.1
     
@@ -142,29 +171,23 @@ def get_connection():
             conn = sqlite3.connect(
                 str(DB_PATH), 
                 timeout=30.0,
-                isolation_level=None,  # Autocommit mode
+                isolation_level=None,
                 check_same_thread=False
             )
             conn.row_factory = sqlite3.Row
-            
-            # Configurações anti-lock
             conn.execute('PRAGMA journal_mode=WAL')
             conn.execute('PRAGMA synchronous=NORMAL')
-            conn.execute('PRAGMA busy_timeout=30000')  # 30 segundos
-            
+            conn.execute('PRAGMA busy_timeout=30000')
             return conn
-            
         except sqlite3.OperationalError as e:
             if 'locked' in str(e) and attempt < max_retries - 1:
                 time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                retry_delay *= 2
                 continue
             raise
-    
-    raise sqlite3.OperationalError("Não foi possível conectar ao banco após múltiplas tentativas")
+    raise sqlite3.OperationalError("Não foi possível conectar ao banco")
 
 def execute_with_retry(func):
-    """Decorator para executar funções com retry automático"""
     def wrapper(*args, **kwargs):
         max_retries = 3
         for attempt in range(max_retries):
@@ -183,37 +206,58 @@ def execute_with_retry(func):
 @execute_with_retry
 def criar_manifesto(numero: str, data: str, origem: str, destino: str, 
                    missao: str = None, aeronave: str = None, pdf_path: str = None) -> int:
-    """Cria um novo manifesto no banco de dados"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
         
-        cursor.execute("""
-            INSERT INTO manifestos (numero_manifesto, data_manifesto, terminal_origem, 
-                                   terminal_destino, missao, aeronave, pdf_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (numero, data, origem, destino, missao, aeronave, pdf_path))
-        
-        manifesto_id = cursor.lastrowid
-        
-        # Registrar log
-        cursor.execute("""
-            INSERT INTO logs (manifesto_id, acao, detalhes, usuario)
-            VALUES (?, ?, ?, ?)
-        """, (manifesto_id, "CRIAÇÃO", f"Manifesto {numero} registrado no sistema", "Sistema"))
-        
-        return manifesto_id
+        try:
+            cursor.execute("""
+                INSERT INTO manifestos (numero_manifesto, data_manifesto, terminal_origem, 
+                                       terminal_destino, missao, aeronave, pdf_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (numero, data, origem, destino, missao, aeronave, pdf_path))
+            
+            manifesto_id = cursor.lastrowid
+            
+            cursor.execute("""
+                INSERT INTO logs (manifesto_id, acao, detalhes, usuario)
+                VALUES (?, ?, ?, ?)
+            """, (manifesto_id, "CRIAÇÃO", f"Manifesto {numero} registrado no sistema", "Sistema"))
+
+            # --- SHEETS SYNC ---
+            if SHEETS_ENABLED and sheets:
+                # Captura a data atual para enviar como data de inclusão
+                data_inclusao = datetime.now().isoformat()
+                
+                dados_manifesto = {
+                    'numero_manifesto': numero,
+                    'data_manifesto': data,
+                    'data_registro': data_inclusao, # NOVA LINHA
+                    'terminal_origem': origem,
+                    'terminal_destino': destino,
+                    'missao': missao,
+                    'aeronave': aeronave,
+                    'status': 'NÃO RECEBIDO'
+                }
+                run_async_sync(sheets.sincronizar_manifesto, dados_manifesto)
+            # -------------------
+            
+            return manifesto_id
+
+        except sqlite3.IntegrityError as e:
+            if 'UNIQUE constraint failed' in str(e) or 'manifestos.numero_manifesto' in str(e):
+                raise ValueError(f"O Manifesto nº {numero} já está cadastrado no sistema.")
+            raise e
+
     finally:
         conn.close()
 
 @execute_with_retry
 def listar_manifestos(filtro_status: str = None, filtro_data_inicio: str = None, 
                      filtro_data_fim: str = None) -> List[Dict]:
-    """Lista todos os manifestos com filtros opcionais"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        
         query = """
             SELECT m.*, 
                    COUNT(DISTINCT v.id) as total_volumes,
@@ -224,31 +268,24 @@ def listar_manifestos(filtro_status: str = None, filtro_data_inicio: str = None,
             WHERE 1=1
         """
         params = []
-        
         if filtro_status:
             query += " AND m.status = ?"
             params.append(filtro_status)
-        
         if filtro_data_inicio:
             query += " AND m.data_manifesto >= ?"
             params.append(filtro_data_inicio)
-        
         if filtro_data_fim:
             query += " AND m.data_manifesto <= ?"
             params.append(filtro_data_fim)
         
         query += " GROUP BY m.id ORDER BY m.data_manifesto DESC, m.id DESC"
-        
         cursor.execute(query, params)
-        manifestos = [dict(row) for row in cursor.fetchall()]
-        
-        return manifestos
+        return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 @execute_with_retry
 def obter_manifesto(manifesto_id: int) -> Optional[Dict]:
-    """Obtém detalhes de um manifesto específico"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -260,11 +297,9 @@ def obter_manifesto(manifesto_id: int) -> Optional[Dict]:
 
 @execute_with_retry
 def iniciar_conferencia(manifesto_id: int, usuario: str = "Sistema"):
-    """Marca o início da conferência de um manifesto"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        
         agora = datetime.now().isoformat()
         cursor.execute("""
             UPDATE manifestos 
@@ -281,14 +316,11 @@ def iniciar_conferencia(manifesto_id: int, usuario: str = "Sistema"):
 
 @execute_with_retry
 def finalizar_conferencia(manifesto_id: int):
-    """Finaliza a conferência e atualiza o status do manifesto"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        
         agora = datetime.now().isoformat()
         
-        # Calcular status baseado nos volumes
         cursor.execute("""
             SELECT 
                 COUNT(*) as total_volumes,
@@ -317,8 +349,16 @@ def finalizar_conferencia(manifesto_id: int):
             INSERT INTO logs (manifesto_id, acao, detalhes, usuario)
             VALUES (?, ?, ?, ?)
         """, (manifesto_id, "FIM CONFERÊNCIA", 
-              f"Status: {status} ({stats['total_recebido']}/{stats['total_expedido']} caixas)",
-              "Sistema"))
+              f"Status: {status}", "Sistema"))
+        
+        # --- SHEETS SYNC ---
+        if SHEETS_ENABLED and sheets:
+            cursor.execute("SELECT numero_manifesto FROM manifestos WHERE id = ?", (manifesto_id,))
+            res = cursor.fetchone()
+            if res:
+                run_async_sync(sheets.atualizar_status_cabecalho, res['numero_manifesto'], status)
+        # -------------------
+        
     finally:
         conn.close()
 
@@ -330,7 +370,6 @@ def adicionar_volume(manifesto_id: int, remetente: str, destinatario: str,
                     peso: float = None, cubagem: float = None,
                     prioridade: str = None, tipo_material: str = None,
                     embalagem: str = None) -> int:
-    """Adiciona um volume ao manifesto"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -345,52 +384,51 @@ def adicionar_volume(manifesto_id: int, remetente: str, destinatario: str,
         
         volume_id = cursor.lastrowid
         
-        # Criar registros de caixas individuais
         for i in range(1, quantidade_exp + 1):
             cursor.execute("""
                 INSERT INTO caixas_individuais (volume_id, numero_caixa)
                 VALUES (?, ?)
             """, (volume_id, i))
-        
+            
+        # --- SHEETS SYNC ---
+        if SHEETS_ENABLED and sheets:
+            cursor.execute("SELECT numero_manifesto FROM manifestos WHERE id = ?", (manifesto_id,))
+            man = cursor.fetchone()
+            
+            if man:
+                dados_volume = {
+                    'remetente': remetente,
+                    'destinatario': destinatario,
+                    'numero_volume': numero_volume,
+                    'quantidade_expedida': quantidade_exp,
+                    'quantidade_recebida': 0,
+                    'status': 'NÃO RECEBIDO'
+                }
+                run_async_sync(sheets.sincronizar_volume, man['numero_manifesto'], dados_volume)
+        # -------------------
+            
         return volume_id
     finally:
         conn.close()
 
 @execute_with_retry
 def buscar_volume(manifesto_id: int, remetente: str, ultimos_digitos: str) -> List[Dict]:
-    """
-    Busca volume por remetente e últimos dígitos
-    IMPORTANTE: ultimos_digitos são APENAS os dígitos ANTES da barra /
-    """
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        
-        # Buscar todos os volumes do remetente no manifesto
         cursor.execute("""
             SELECT * FROM volumes
-            WHERE manifesto_id = ? 
-            AND remetente = ?
+            WHERE manifesto_id = ? AND remetente = ?
         """, (manifesto_id, remetente))
         
         todos_volumes = [dict(row) for row in cursor.fetchall()]
-        
-        # Filtrar manualmente pelos últimos dígitos ANTES da /
         volumes_encontrados = []
+        
+        import re
         for volume in todos_volumes:
             numero_vol = volume['numero_volume']
-            
-            # Extrair parte ANTES da /
-            if '/' in numero_vol:
-                parte_antes_barra = numero_vol.split('/')[0]
-            else:
-                parte_antes_barra = numero_vol
-            
-            # Remover não-numéricos
-            import re
+            parte_antes_barra = numero_vol.split('/')[0] if '/' in numero_vol else numero_vol
             apenas_numeros = re.sub(r'\D', '', parte_antes_barra)
-            
-            # Verificar se termina com os dígitos procurados
             if apenas_numeros.endswith(ultimos_digitos):
                 volumes_encontrados.append(volume)
         
@@ -400,7 +438,6 @@ def buscar_volume(manifesto_id: int, remetente: str, ultimos_digitos: str) -> Li
 
 @execute_with_retry
 def listar_volumes(manifesto_id: int) -> List[Dict]:
-    """Lista todos os volumes de um manifesto"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -409,14 +446,12 @@ def listar_volumes(manifesto_id: int) -> List[Dict]:
             WHERE manifesto_id = ?
             ORDER BY remetente, numero_volume
         """, (manifesto_id,))
-        volumes = [dict(row) for row in cursor.fetchall()]
-        return volumes
+        return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 @execute_with_retry
 def obter_volume(volume_id: int) -> Optional[Dict]:
-    """Obtém detalhes de um volume específico"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -428,7 +463,6 @@ def obter_volume(volume_id: int) -> Optional[Dict]:
 
 @execute_with_retry
 def obter_caixas(volume_id: int) -> List[Dict]:
-    """Obtém todas as caixas individuais de um volume"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -437,28 +471,27 @@ def obter_caixas(volume_id: int) -> List[Dict]:
             WHERE volume_id = ?
             ORDER BY numero_caixa
         """, (volume_id,))
-        caixas = [dict(row) for row in cursor.fetchall()]
-        return caixas
+        return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
 @execute_with_retry
 def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sistema"):
-    """Marca uma caixa individual como recebida"""
+    """Marca caixa como recebida e dispara sync do volume"""
     conn = get_connection()
+    
+    dados_para_sync = None 
+    
     try:
         cursor = conn.cursor()
-        
         agora = datetime.now().isoformat()
         
-        # 1. Atualizar caixa (Código Existente)
         cursor.execute("""
             UPDATE caixas_individuais
             SET status = 'RECEBIDA', data_hora_recepcao = ?, usuario_conferente = ?
             WHERE volume_id = ? AND numero_caixa = ?
         """, (agora, usuario, volume_id, numero_caixa))
         
-        # 2. Atualizar contadores do volume (Código Existente)
         cursor.execute("""
             UPDATE volumes
             SET quantidade_recebida = (
@@ -470,14 +503,12 @@ def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sis
             WHERE id = ?
         """, (volume_id, agora, usuario, volume_id))
         
-        # 3. Atualizar primeira recepção se for a primeira (Código Existente)
         cursor.execute("""
             UPDATE volumes
             SET data_hora_primeira_recepcao = ?
             WHERE id = ? AND data_hora_primeira_recepcao IS NULL
         """, (agora, volume_id))
         
-        # 4. Atualizar status do volume (Código Existente)
         cursor.execute("""
             UPDATE volumes
             SET status = CASE
@@ -488,18 +519,14 @@ def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sis
             WHERE id = ?
         """, (volume_id,))
 
-        # ==============================================================================
-        # ✅ NOVA LÓGICA: ATUALIZAR STATUS DO MANIFESTO AUTOMATICAMENTE
-        # ==============================================================================
-        
-        # A. Descobrir qual é o manifesto deste volume
+        # Lógica de atualização de status do manifesto
         cursor.execute("SELECT manifesto_id FROM volumes WHERE id = ?", (volume_id,))
         resultado_manifesto = cursor.fetchone()
         
+        novo_status_manifesto = 'NÃO RECEBIDO'
+        
         if resultado_manifesto:
             manifesto_id = resultado_manifesto['manifesto_id']
-            
-            # B. Calcular totais de caixas do manifesto inteiro
             cursor.execute("""
                 SELECT 
                     SUM(quantidade_expedida) as total_exp,
@@ -507,46 +534,46 @@ def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sis
                 FROM volumes 
                 WHERE manifesto_id = ?
             """, (manifesto_id,))
-            
             stats = cursor.fetchone()
-            
-            # C. Determinar novo status do Manifesto
-            novo_status_manifesto = 'NÃO RECEBIDO'
             
             if stats and stats['total_exp'] is not None:
                 total_exp = stats['total_exp']
                 total_rec = stats['total_rec'] or 0
-                
                 if total_rec >= total_exp and total_exp > 0:
                     novo_status_manifesto = 'TOTALMENTE RECEBIDO'
                 elif total_rec > 0:
                     novo_status_manifesto = 'PARCIALMENTE RECEBIDO'
             
-            # D. Aplicar atualização no banco
-            cursor.execute("""
-                UPDATE manifestos 
-                SET status = ? 
-                WHERE id = ?
-            """, (novo_status_manifesto, manifesto_id))
+            cursor.execute("UPDATE manifestos SET status = ? WHERE id = ?", (novo_status_manifesto, manifesto_id))
             
-        # ==============================================================================
-
+            # --- SHEETS SYNC ---
+            if SHEETS_ENABLED and sheets:
+                cursor.execute("""
+                    SELECT v.*, m.numero_manifesto 
+                    FROM volumes v 
+                    JOIN manifestos m ON v.manifesto_id = m.id 
+                    WHERE v.id = ?
+                """, (volume_id,))
+                dados_para_sync = dict(cursor.fetchone())
+            # -------------------
+            
     finally:
         conn.close()
+        
+    if dados_para_sync and SHEETS_ENABLED and sheets:
+        num_man = dados_para_sync.pop('numero_manifesto')
+        run_async_sync(sheets.sincronizar_volume, num_man, dados_para_sync)
+        run_async_sync(sheets.atualizar_status_cabecalho, num_man, novo_status_manifesto)
 
 @execute_with_retry
 def marcar_volume_recebido(volume_id: int, quantidade: int = None, usuario: str = "Sistema"):
-    """Marca um volume como recebido (quantidade de caixas)"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
-        
-        # Se quantidade não especificada, marcar todas
         if quantidade is None:
             cursor.execute("SELECT quantidade_expedida FROM volumes WHERE id = ?", (volume_id,))
             quantidade = cursor.fetchone()['quantidade_expedida']
         
-        # Obter caixas não recebidas
         cursor.execute("""
             SELECT numero_caixa FROM caixas_individuais
             WHERE volume_id = ? AND status = 'NÃO RECEBIDA'
@@ -558,7 +585,6 @@ def marcar_volume_recebido(volume_id: int, quantidade: int = None, usuario: str 
     finally:
         conn.close()
     
-    # Marcar cada caixa (fora da conexão principal para evitar lock)
     for caixa in caixas:
         marcar_caixa_recebida(volume_id, caixa['numero_caixa'], usuario)
 
@@ -566,7 +592,6 @@ def marcar_volume_recebido(volume_id: int, quantidade: int = None, usuario: str 
 
 @execute_with_retry
 def registrar_log(manifesto_id: int, acao: str, detalhes: str = None, usuario: str = "Sistema"):
-    """Registras uma ação no log"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -579,7 +604,6 @@ def registrar_log(manifesto_id: int, acao: str, detalhes: str = None, usuario: s
 
 @execute_with_retry
 def obter_logs(manifesto_id: int) -> List[Dict]:
-    """Obtém todos os logs de um manifesto"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -588,16 +612,12 @@ def obter_logs(manifesto_id: int) -> List[Dict]:
             WHERE manifesto_id = ?
             ORDER BY timestamp DESC
         """, (manifesto_id,))
-        logs = [dict(row) for row in cursor.fetchall()]
-        return logs
+        return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
-# ==================== ESTATÍSTICAS ====================
-
 @execute_with_retry
 def obter_estatisticas_manifesto(manifesto_id: int) -> Dict:
-    """Retorna estatísticas detalhadas de um manifesto"""
     conn = get_connection()
     try:
         cursor = conn.cursor()
@@ -616,7 +636,6 @@ def obter_estatisticas_manifesto(manifesto_id: int) -> Dict:
         
         stats = dict(cursor.fetchone())
         
-        # Calcular percentual
         if stats['total_caixas_expedidas'] and stats['total_caixas_expedidas'] > 0:
             stats['percentual_recebido'] = (
                 stats['total_caixas_recebidas'] / stats['total_caixas_expedidas'] * 100
