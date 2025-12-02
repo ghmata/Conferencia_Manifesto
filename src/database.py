@@ -451,14 +451,14 @@ def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sis
         
         agora = datetime.now().isoformat()
         
-        # Atualizar caixa
+        # 1. Atualizar caixa (Código Existente)
         cursor.execute("""
             UPDATE caixas_individuais
             SET status = 'RECEBIDA', data_hora_recepcao = ?, usuario_conferente = ?
             WHERE volume_id = ? AND numero_caixa = ?
         """, (agora, usuario, volume_id, numero_caixa))
         
-        # Atualizar contadores do volume
+        # 2. Atualizar contadores do volume (Código Existente)
         cursor.execute("""
             UPDATE volumes
             SET quantidade_recebida = (
@@ -466,18 +466,18 @@ def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sis
                 WHERE volume_id = ? AND status = 'RECEBIDA'
             ),
             data_hora_ultima_recepcao = ?,
-            usuario_recepcao = ?  -- Atualiza quem recebeu
+            usuario_recepcao = ?
             WHERE id = ?
         """, (volume_id, agora, usuario, volume_id))
         
-        # Atualizar primeira recepção se for a primeira
+        # 3. Atualizar primeira recepção se for a primeira (Código Existente)
         cursor.execute("""
             UPDATE volumes
             SET data_hora_primeira_recepcao = ?
             WHERE id = ? AND data_hora_primeira_recepcao IS NULL
         """, (agora, volume_id))
         
-        # Atualizar status do volume
+        # 4. Atualizar status do volume (Código Existente)
         cursor.execute("""
             UPDATE volumes
             SET status = CASE
@@ -487,6 +487,50 @@ def marcar_caixa_recebida(volume_id: int, numero_caixa: int, usuario: str = "Sis
             END
             WHERE id = ?
         """, (volume_id,))
+
+        # ==============================================================================
+        # ✅ NOVA LÓGICA: ATUALIZAR STATUS DO MANIFESTO AUTOMATICAMENTE
+        # ==============================================================================
+        
+        # A. Descobrir qual é o manifesto deste volume
+        cursor.execute("SELECT manifesto_id FROM volumes WHERE id = ?", (volume_id,))
+        resultado_manifesto = cursor.fetchone()
+        
+        if resultado_manifesto:
+            manifesto_id = resultado_manifesto['manifesto_id']
+            
+            # B. Calcular totais de caixas do manifesto inteiro
+            cursor.execute("""
+                SELECT 
+                    SUM(quantidade_expedida) as total_exp,
+                    SUM(quantidade_recebida) as total_rec
+                FROM volumes 
+                WHERE manifesto_id = ?
+            """, (manifesto_id,))
+            
+            stats = cursor.fetchone()
+            
+            # C. Determinar novo status do Manifesto
+            novo_status_manifesto = 'NÃO RECEBIDO'
+            
+            if stats and stats['total_exp'] is not None:
+                total_exp = stats['total_exp']
+                total_rec = stats['total_rec'] or 0
+                
+                if total_rec >= total_exp and total_exp > 0:
+                    novo_status_manifesto = 'TOTALMENTE RECEBIDO'
+                elif total_rec > 0:
+                    novo_status_manifesto = 'PARCIALMENTE RECEBIDO'
+            
+            # D. Aplicar atualização no banco
+            cursor.execute("""
+                UPDATE manifestos 
+                SET status = ? 
+                WHERE id = ?
+            """, (novo_status_manifesto, manifesto_id))
+            
+        # ==============================================================================
+
     finally:
         conn.close()
 

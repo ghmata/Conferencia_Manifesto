@@ -732,54 +732,80 @@ class BuscaWindow(QMainWindow):
             del self.conferencia_windows[manifesto_id]
     
     def receber_volume_direto(self, volume_id, manifesto_id, quantidade_expedida):
-        """Recebe um volume diretamente da busca, sem abrir a janela de conferência"""
+        """Recebe um volume diretamente da busca, solicitando responsável e mostrando número correto"""
         try:
-            from PyQt5.QtWidgets import QInputDialog, QMessageBox, QDialog
+            from PyQt5.QtWidgets import QInputDialog, QMessageBox, QDialog, QLineEdit
             from src.ui.conferencia_window import VolumeMultiploDialog
             from src.database import obter_volume, obter_caixas, marcar_caixa_recebida, marcar_volume_recebido
             
-            # Verificar se o volume tem mais de uma caixa
+            # 1. Obter dados do volume imediatamente para as validações
+            volume = obter_volume(volume_id)
+            if volume is None:
+                QMessageBox.critical(self, "Erro", f"Volume {volume_id} não encontrado!")
+                return
+
+            # 2. Lógica de formatação do número (4 ou 7 dígitos)
+            numero_completo = volume['numero_volume']
+            # Pega apenas o que está antes da barra, se houver barra
+            parte_antes_barra = numero_completo.split('/')[0] if '/' in numero_completo else numero_completo
+            remetente = volume['remetente'].upper()
+            
+            # Se for CABW ou CABE, pega 7 dígitos, senão pega 4
+            if 'CABW' in remetente or 'CABE' in remetente:
+                numero_exibicao = parte_antes_barra[-7:] 
+            else:
+                numero_exibicao = parte_antes_barra[-4:]
+
+            # 3. Solicitar nome do responsável (Correção solicitada)
+            nome, ok = QInputDialog.getText(
+                self,
+                "Responsável pelo Recebimento",
+                f"Digite o nome de quem está recebendo o volume final {numero_exibicao}:",
+                QLineEdit.Normal,
+                ""
+            )
+            
+            # Se cancelar ou deixar em branco, aborta a operação
+            if not ok or not nome.strip():
+                return
+
+            nome_usuario = nome.strip().upper()
+
+            # 4. Verificar caixas
             caixas = obter_caixas(volume_id)
             
             if quantidade_expedida > 1 and len(caixas) > 0:
-                # Se tiver caixas individuais cadastradas, abrir diálogo para seleção
-                volume = obter_volume(volume_id)
-                if volume is None:
-                    QMessageBox.critical(
-                        self,
-                        "Erro",
-                        f"Volume {volume_id} não encontrado!"
-                    )
-                    return
-                    
-                # Abrir diálogo para seleção de caixas
-                dialog = VolumeMultiploDialog(volume, caixas, self, "Sistema")
+                # Se tiver caixas individuais cadastradas, abrir diálogo para seleção passando o nome
+                dialog = VolumeMultiploDialog(volume, caixas, self, nome_usuario)
                 if dialog.exec_() == QDialog.Accepted:
                     QMessageBox.information(
                         self,
                         "Sucesso",
-                        f"{dialog.quantidade_marcada} caixa(s) marcada(s) como recebida(s) com sucesso!"
+                        f"{dialog.quantidade_marcada} caixa(s) marcada(s) como recebida(s) com sucesso por {nome_usuario}!"
                     )
-                    # ADICIONADO: Emitir sinal após receber múltiplas caixas
+                    # Emitir sinal
                     self.volume_recebido.emit()
             else:
-                # Se for apenas uma caixa, confirmar recebimento
+                # Se for apenas uma caixa, confirmar recebimento com o número formatado
                 reply = QMessageBox.question(
                     self, 
                     'Confirmar Recebimento',
-                    f'Deseja confirmar o recebimento do volume {volume_id}?',
+                    f'Confirma o recebimento do volume final {numero_exibicao}?\n\n'
+                    f'Remetente: {volume["remetente"]}\n'
+                    f'Responsável: {nome_usuario}',
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.Yes
                 )
                 
                 if reply == QMessageBox.Yes:
-                    marcar_volume_recebido(volume_id, 1, "Sistema")
+                    # Passa o nome do usuário capturado
+                    marcar_volume_recebido(volume_id, 1, nome_usuario)
                     QMessageBox.information(
                         self, 
                         "Sucesso", 
-                        f"Volume {volume_id} recebido com sucesso!"
+                        f"Volume final {numero_exibicao} recebido com sucesso!"
                     )
-                    # ADICIONADO: Emitir sinal após receber volume único
+                    # Emitir sinal
                     self.volume_recebido.emit()
             
             # Atualizar a tabela de volumes
@@ -794,7 +820,8 @@ class BuscaWindow(QMainWindow):
                 "Erro",
                 f"Ocorreu um erro ao processar o recebimento:\n{str(e)}"
             )
-    
+            
+            
     def ver_detalhes_manifesto(self, manifesto_id: int):
         """Abre os detalhes do manifesto"""
         try:

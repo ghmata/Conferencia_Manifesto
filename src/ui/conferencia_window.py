@@ -154,38 +154,47 @@ class ConferenciaWindow(QMainWindow):
         layout.addWidget(header_frame, 0, 0, 1, 3)
         
     def criar_painel_controles(self, layout):
-        """Cria o painel esquerdo com controles de busca - OTIMIZADO"""
+        """Cria o painel esquerdo com controles de busca - REORGANIZADO E CORRIGIDO"""
         controles_group = QGroupBox("🔍 BUSCAR VOLUME")
         controles_layout = QVBoxLayout(controles_group)
-        controles_layout.setSpacing(12)
+        # Espaçamento controlado entre widgets
+        controles_layout.setSpacing(5)
         
-        # Instrução
+        # Instrução - Ajuste de SizePolicy para evitar corte
         instrucao = QLabel(
-            "Digite o <b>REMETENTE</b> e os <b>ÚLTIMOS DÍGITOS ANTES DA /</b> do n° do volume:"
+            "Digite o <b>REMETENTE</b> e os <b>ÚLTIMOS DÍGITOS</b> do volume:"
         )
         instrucao.setStyleSheet("font-size: 12px; color: #6c757d; margin-bottom: 5px;")
-        instrucao.setWordWrap(True) # Ativado para evitar corte
-        # Removido setFixedHeight(40) para permitir expansão automática
-        instrucao.setMinimumHeight(40)
+        instrucao.setWordWrap(True)
+        # Permite expandir verticalmente se necessário, mas prefere altura mínima
+        instrucao.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         controles_layout.addWidget(instrucao)
         
-        # Campo Remetente
+        controles_layout.addSpacing(5) # Espaço visual
+        
+        # --- Grupo Remetente ---
         lbl_remetente = QLabel("Remetente:")
         lbl_remetente.setStyleSheet("font-weight: bold; color: #495057; font-size: 12px;")
         controles_layout.addWidget(lbl_remetente)
         
         self.txt_remetente = QLineEdit()
         self.txt_remetente.setPlaceholderText("Ex: PAMASP, CABW, etc...")
-        self.txt_remetente.setMinimumHeight(35) # Alterado de fixed para minimum
+        self.txt_remetente.setMinimumHeight(35)
         self.txt_remetente.textChanged.connect(self.atualizar_instrucao_digitos)
         self.txt_remetente.returnPressed.connect(self.focar_digitos)
         controles_layout.addWidget(self.txt_remetente)
         
-        # Campo Dígitos
+        controles_layout.addSpacing(10) # Separação entre grupos
+        
+        # --- Grupo Dígitos ---
         lbl_digitos_layout = QHBoxLayout()
         self.lbl_digitos = QLabel("Últimos 4 dígitos (antes da /):")
         self.lbl_digitos.setStyleSheet("font-weight: bold; color: #495057; font-size: 12px;")
-        self.lbl_digitos.setWordWrap(True)
+        
+        # ALTERAÇÃO PRINCIPAL AQUI:
+        self.lbl_digitos.setWordWrap(False)  # Força ficar em uma única linha
+        self.lbl_digitos.setMinimumWidth(200) # Garante largura suficiente para não cortar
+        
         lbl_digitos_layout.addWidget(self.lbl_digitos)
         
         lbl_digitos_layout.addStretch()
@@ -196,10 +205,14 @@ class ConferenciaWindow(QMainWindow):
         controles_layout.addLayout(lbl_digitos_layout)
         
         self.txt_digitos = QLineEdit()
-        self.txt_digitos.setPlaceholderText("Digite os últimos dígitos ANTES da /")
-        self.txt_digitos.setMinimumHeight(35) # Alterado de fixed para minimum
+        self.txt_digitos.setPlaceholderText("Digite os dígitos ANTES da /")
+        self.txt_digitos.setMinimumHeight(35)
+        # Habilitar botão se ambos campos preenchidos (independente da ordem)
+        self.txt_digitos.textChanged.connect(self.atualizar_instrucao_digitos)
         self.txt_digitos.returnPressed.connect(self.buscar_volume_btn)
         controles_layout.addWidget(self.txt_digitos)
+        
+        controles_layout.addSpacing(15) # Espaço para o botão
         
         # Botão Buscar
         self.btn_buscar = QPushButton("🔍 BUSCAR VOLUME")
@@ -224,6 +237,8 @@ class ConferenciaWindow(QMainWindow):
         self.btn_buscar.setEnabled(False)
         controles_layout.addWidget(self.btn_buscar)
         
+        controles_layout.addSpacing(10)
+        
         # Dica interativa
         dica_frame = QFrame()
         dica_frame.setStyleSheet("""
@@ -234,22 +249,25 @@ class ConferenciaWindow(QMainWindow):
                 padding: 10px;
             }
         """)
-        # Removido setFixedHeight(80) para evitar corte de texto
+        # Frame se adapta ao conteúdo
         dica_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         
         dica_layout = QVBoxLayout(dica_frame)
-        dica_layout.setContentsMargins(10, 10, 10, 10) # Margens internas garantidas
+        dica_layout.setContentsMargins(10, 10, 10, 10)
+        dica_layout.setSpacing(5)
         
         dica_titulo = QLabel("💡 Dica Importante")
-        dica_titulo.setStyleSheet("font-weight: bold; color: #0066cc; margin-bottom: 5px; font-size: 11px;")
+        dica_titulo.setStyleSheet("font-weight: bold; color: #0066cc; margin-bottom: 0px; font-size: 11px;")
         dica_layout.addWidget(dica_titulo)
         
         dica_texto = QLabel(
             "Para <b>251381004311/0001</b>, digite apenas <b>4311</b><br>"
-            "(últimos 4 dígitos antes da barra)"
+            "(parte numérica antes da barra)"
         )
         dica_texto.setStyleSheet("font-size: 11px; color: #0066cc; line-height: 1.3;")
-        dica_texto.setWordWrap(True) # Garantia visual
+        dica_texto.setWordWrap(True)
+        # Garante leitura completa
+        dica_texto.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         dica_layout.addWidget(dica_texto)
         
         controles_layout.addWidget(dica_frame)
@@ -312,7 +330,6 @@ class ConferenciaWindow(QMainWindow):
     def criar_card_estatistica(self, titulo, valor, cor):
         """Cria um card de estatística individual - OTIMIZADO"""
         card = QFrame()
-        # setFixedHeight(80) alterado para Minimum para evitar cortes
         card.setMinimumHeight(80)
         card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         card.setStyleSheet(f"""
@@ -358,12 +375,12 @@ class ConferenciaWindow(QMainWindow):
         return card
         
     def criar_painel_resultados(self, layout):
-        """Cria o painel direito com resultados - ALTAMENTE OTIMIZADO"""
+        """Cria o painel direito com resultados - SEM CAIXA DE HISTÓRICO"""
         resultados_group = QGroupBox("📦 RESULTADO DA BUSCA")
         resultados_layout = QVBoxLayout(resultados_group)
         resultados_layout.setSpacing(10)
         
-        # Área de resultados - EXPANSÍVEL
+        # Área de resultados - EXPANSÍVEL PARA OCUPAR TODO O ESPAÇO
         self.txt_resultado = QTextEdit()
         self.txt_resultado.setReadOnly(True)
         self.txt_resultado.setStyleSheet("""
@@ -414,35 +431,6 @@ class ConferenciaWindow(QMainWindow):
         self.btn_confirmar.clicked.connect(self.confirmar_recebimento)
         self.btn_confirmar.setVisible(False)
         resultados_layout.addWidget(self.btn_confirmar)
-        
-        # Histórico rápido
-        historico_frame = QFrame()
-        # Removido setFixedHeight(70) para evitar corte
-        historico_frame.setMinimumHeight(70)
-        historico_frame.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
-        
-        historico_frame.setStyleSheet("""
-            QFrame {
-                background-color: #fff3cd;
-                border: 1px solid #ffeaa7;
-                border-radius: 6px;
-                padding: 10px;
-                margin-top: 8px;
-            }
-        """)
-        historico_layout = QVBoxLayout(historico_frame)
-        historico_layout.setContentsMargins(10, 10, 10, 10)
-        
-        historico_titulo = QLabel("📝 ULTIMAS ACOES")
-        historico_titulo.setStyleSheet("font-weight: bold; color: #856404; margin-bottom: 5px; font-size: 11px;")
-        historico_layout.addWidget(historico_titulo)
-        
-        self.lbl_historico = QLabel("Nenhuma ação realizada")
-        self.lbl_historico.setStyleSheet("font-size: 11px; color: #856404; line-height: 1.3;")
-        self.lbl_historico.setWordWrap(True) # Essencial
-        historico_layout.addWidget(self.lbl_historico)
-        
-        resultados_layout.addWidget(historico_frame)
         
         # POLÍTICA DE TAMANHO para expansão máxima
         resultados_group.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
@@ -585,16 +573,17 @@ class ConferenciaWindow(QMainWindow):
         
         layout.addWidget(rodape_frame, 3, 0, 1, 3)
 
-    # === MÉTODOS DE FUNCIONALIDADE - MANTIDOS DA VERSÃO FUNCIONAL ===
+    # === MÉTODOS DE FUNCIONALIDADE ===
     
     def carregar_manifesto(self):
         """Carrega e atualiza informações do manifesto"""
         self.atualizar_resumo()
         
     def atualizar_instrucao_digitos(self):
-        """Atualiza a instrução de dígitos baseado no remetente"""
+        """Atualiza a instrução de dígitos baseado no remetente e habilita busca"""
         remetente = self.txt_remetente.text().strip().upper()
         
+        # Lógica de rótulo para CABW/CABE
         if 'CABW' in remetente or 'CABE' in remetente:
             self.lbl_digitos.setText("Últimos 7 dígitos (antes da /):")
             self.txt_digitos.setPlaceholderText("Digite os últimos 7 dígitos ANTES da /")
@@ -602,18 +591,16 @@ class ConferenciaWindow(QMainWindow):
             self.lbl_digitos.setText("Últimos 4 dígitos (antes da /):")
             self.txt_digitos.setPlaceholderText("Digite os últimos 4 dígitos ANTES da /")
             
-        # Habilitar botão buscar apenas se ambos campos preenchidos
-        self.btn_buscar.setEnabled(
-            bool(self.txt_remetente.text().strip()) and 
-            bool(self.txt_digitos.text().strip())
-        )
+        # Habilitar botão se ambos campos estiverem preenchidos (independente da ordem)
+        digitos = self.txt_digitos.text().strip()
+        self.btn_buscar.setEnabled(bool(remetente) and bool(digitos))
             
     def focar_digitos(self):
         """Move o foco para o campo de dígitos"""
         self.txt_digitos.setFocus()
         
     def buscar_volume_btn(self):
-        """Busca volume e exibe resultado - FUNCIONALIDADE ORIGINAL"""
+        """Busca volume e exibe resultado"""
         if not self.conferencia_ativa:
             QMessageBox.warning(
                 self,
@@ -653,7 +640,7 @@ class ConferenciaWindow(QMainWindow):
             self.btn_confirmar.setVisible(False)
             
     def exibir_nao_encontrado(self, remetente: str, digitos: str):
-        """Exibe mensagem de volume não encontrado - FUNCIONALIDADE ORIGINAL"""
+        """Exibe mensagem de volume não encontrado"""
         resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║                     ❌ VOLUME NÃO ENCONTRADO                  ║
@@ -687,7 +674,7 @@ Opções:
         self.txt_digitos.setFocus()
         
     def exibir_volume_encontrado(self, volume: dict):
-        """Exibe volume encontrado e aguarda confirmação - FUNCIONALIDADE ORIGINAL"""
+        """Exibe volume encontrado e aguarda confirmação"""
         caixas = obter_caixas(volume['id'])
         
         resultado = f"""
@@ -731,7 +718,7 @@ Status Atual:
         self.txt_resultado.setText(resultado)
         
     def confirmar_recebimento(self):
-        """Confirma o recebimento do volume encontrado - FUNCIONALIDADE ORIGINAL"""
+        """Confirma o recebimento do volume encontrado"""
         if not self.volume_encontrado:
             return
         
@@ -751,11 +738,21 @@ Status Atual:
                 self.mostrar_sucesso_recebimento(volume, 1, 1)
                 self.atualizar_resumo()
         else:
-            # Volume múltiplo - abrir diálogo de seleção
-            dialog = VolumeMultiploDialog(volume, caixas, self, self.usuario_conferente)
-            if dialog.exec_() == QDialog.Accepted:
-                self.atualizar_resumo()
-                self.mostrar_sucesso_recebimento(volume, dialog.quantidade_marcada, volume['quantidade_expedida'])
+            # Volume múltiplo - verificar se TODAS já estão recebidas
+            todas_recebidas = all(c['status'] == 'RECEBIDA' for c in caixas)
+            
+            if todas_recebidas:
+                QMessageBox.information(
+                    self,
+                    "Já Recebido",
+                    "Todas as caixas deste volume já foram recebidas!"
+                )
+            else:
+                # Abrir diálogo de seleção
+                dialog = VolumeMultiploDialog(volume, caixas, self, self.usuario_conferente)
+                if dialog.exec_() == QDialog.Accepted:
+                    self.atualizar_resumo()
+                    self.mostrar_sucesso_recebimento(volume, dialog.quantidade_marcada, volume['quantidade_expedida'])
         
         # Limpar para próxima busca
         self.txt_remetente.clear()
@@ -765,7 +762,7 @@ Status Atual:
         self.btn_confirmar.setVisible(False)
         
     def mostrar_sucesso_recebimento(self, volume: dict, recebidas: int, total: int):
-        """Mostra mensagem de sucesso após recebimento - FUNCIONALIDADE ORIGINAL"""
+        """Mostra mensagem de sucesso após recebimento"""
         resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║               ✅ RECEBIMENTO CONFIRMADO COM SUCESSO!          ║
@@ -793,7 +790,7 @@ Recebido por: {self.usuario_conferente}
         self.txt_resultado.setText(resultado)
         
     def exibir_multiplos_volumes(self, volumes: list):
-        """Exibe quando múltiplos volumes são encontrados - FUNCIONALIDADE ORIGINAL"""
+        """Exibe quando múltiplos volumes são encontrados"""
         resultado = f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║              ⚠️  MÚLTIPLOS VOLUMES ENCONTRADOS                ║
@@ -820,7 +817,7 @@ Foram encontrados {len(volumes)} volumes com estes dígitos:
         self.txt_resultado.setText(resultado)
         
     def atualizar_resumo(self):
-        """Atualiza o resumo da conferência - FUNCIONALIDADE ORIGINAL"""
+        """Atualiza o resumo da conferência"""
         stats = obter_estatisticas_manifesto(self.manifesto_id)
         
         total_vol = stats['total_volumes'] or 0
@@ -855,7 +852,7 @@ Status dos volumes:
         self.lbl_detalhes_stats.setText(detalhes)
         
     def iniciar_conferencia_handler(self):
-        """Inicia a conferência - FUNCIONALIDADE ORIGINAL"""
+        """Inicia a conferência"""
         # Solicitar nome do conferente
         nome, ok = QInputDialog.getText(
             self,
@@ -899,7 +896,7 @@ Status dos volumes:
             )
             
     def finalizar_conferencia_handler(self):
-        """Finaliza a conferência solicitando nome do conferente - FUNCIONALIDADE ORIGINAL"""
+        """Finaliza a conferência solicitando nome do conferente"""
         stats = obter_estatisticas_manifesto(self.manifesto_id)
         
         exp = stats['total_caixas_expedidas'] or 0
@@ -945,7 +942,7 @@ Status dos volumes:
 
 
 class VolumeMultiploDialog(QDialog):
-    """Diálogo para selecionar caixas específicas de um volume - FUNCIONALIDADE ORIGINAL"""
+    """Diálogo para selecionar caixas específicas de um volume"""
     
     def __init__(self, volume: dict, caixas: list, parent=None, usuario: str = "Sistema"):
         super().__init__(parent)
