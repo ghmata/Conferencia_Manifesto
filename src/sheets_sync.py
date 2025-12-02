@@ -17,7 +17,7 @@ from datetime import datetime
 warnings.filterwarnings("ignore", category=UserWarning, module="gspread")
 
 # ================= CONFIGURAÇÃO =================
-SPREADSHEET_ID = "12WhWOgfWEzgy6nmpf0NVPHYL8mZsl3NH9fzuMrmErlc"  # <--- MANTENHA SEU ID AQUI
+SPREADSHEET_ID = "ID Sheets"  # <--- MANTENHA SEU ID AQUI
 CREDENTIALS_FILE = Path("credentials.json")
 
 SCOPE = [
